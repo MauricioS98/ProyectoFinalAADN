@@ -1,0 +1,511 @@
+/* ============================================================================
+   PARKCLOUD COLOMBIA - SISTEMA DE IDENTIDAD DE MARCA Y DISEÑO VISUAL
+   1. Tipografía Títulos:     'Space Grotesk', sans-serif
+   2. Tipografía Subtítulos:  'Plus Jakarta Sans', sans-serif
+   3. Tipografía Contenido:   'Inter', sans-serif + 'JetBrains Mono', monospace
+   Paleta Cromática:
+   - Deep Midnight Navy: #0B132B  |  Slate Card Surface: #162447
+   - Azure Sovereign:    #0066FF  |  Cyan Telemetry:     #00D2FF
+   - Emerald ACID:       #10B981  |  Amber Thermal:      #F59E0B
+   - Crimson Occupied:   #EF4444  |  Purple Lakehouse:   #8B5CF6
+   ============================================================================ */
+
+:root {
+  --bg-midnight: #0B132B;
+  --bg-slate: #162447;
+  --bg-card: rgba(22, 36, 71, 0.86);
+  --azure-primary: #0066FF;
+  --telemetry-cyan: #00D2FF;
+  --acid-emerald: #10B981;
+  --thermal-amber: #F59E0B;
+  --occupied-crimson: #EF4444;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --border-subtle: rgba(148, 163, 184, 0.2);
+
+  --font-title: 'Space Grotesk', sans-serif;
+  --font-subtitle: 'Plus Jakarta Sans', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: radial-gradient(circle at 12% 10%, #162447 0%, #0B132B 60%, #060B19 100%);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+h1, h2, h3, .brand-title, .card-title, .kpi-value {
+  font-family: var(--font-title);
+  letter-spacing: -0.02em;
+}
+
+.brand-subtitle, .card-subtitle, .role-tab, .kpi-label, label, th, .btn {
+  font-family: var(--font-subtitle);
+}
+
+.mono, code {
+  font-family: var(--font-mono);
+}
+
+/* TOPBAR Y NAVEGACIÓN DE ROLES */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px 26px;
+  background: rgba(11, 19, 43, 0.94);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand-cluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-cluster img {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+  border-radius: 11px;
+  object-fit: cover;
+  border: 1.5px solid rgba(0, 210, 255, 0.5);
+  box-shadow: 0 0 16px rgba(0, 102, 255, 0.35);
+}
+
+.brand-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #FFFFFF 0%, #00D2FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.role-tabs {
+  display: flex;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.role-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 9px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.role-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.role-tab.active {
+  background: linear-gradient(135deg, var(--azure-primary) 0%, #0047B3 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 102, 255, 0.45);
+}
+
+/* CONTENEDOR PRINCIPAL Y TARJETAS KPI */
+.main-container {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 22px 26px 54px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--azure-primary);
+}
+
+.kpi-label {
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.kpi-value {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.card-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.split-layout {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 18px;
+}
+
+@media (max-width: 1120px) {
+  .split-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* GRILLA INTERACTIVA DE 40 CELDAS (# DEL PARQUEADERO) */
+.parking-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+
+.bay-cell {
+  border-radius: 10px;
+  padding: 8px 7px;
+  border: 1.5px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.75);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 78px;
+}
+
+.bay-cell:hover {
+  transform: translateY(-2px);
+  border-color: var(--telemetry-cyan);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.bay-cell.available {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.55);
+}
+
+.bay-cell.occupied {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.68);
+}
+
+.bay-cell.selected {
+  outline: 2.5px solid var(--telemetry-cyan);
+  box-shadow: 0 0 18px rgba(0, 210, 255, 0.45);
+}
+
+.bay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bay-number {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.bay-type-tag {
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.bay-plate {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #FCA5A5;
+  background: rgba(127, 29, 29, 0.6);
+  padding: 2px 5px;
+  border-radius: 4px;
+  text-align: center;
+  margin: 4px 0;
+}
+
+.bay-meta {
+  font-size: 0.63rem;
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* MAPA DE CALOR HORARIO 7 DÍAS x 18 HORAS */
+.heatmap-matrix {
+  display: grid;
+  grid-template-columns: 86px repeat(18, 1fr);
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.hm-hour-header {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.hm-day-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.hm-cell {
+  height: 28px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* FORMULARIOS, CONTROLES Y BOTONES */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+input, select {
+  width: 100%;
+  background: rgba(11, 19, 43, 0.9);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--telemetry-cyan);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--azure-primary), #0052CC);
+  color: #fff;
+}
+
+.btn-emerald {
+  background: linear-gradient(135deg, var(--acid-emerald), #059669);
+  color: #fff;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, var(--occupied-crimson), #DC2626);
+  color: #fff;
+}
+
+.btn-outline {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.btn:hover {
+  filter: brightness(1.1);
+}
+
+/* INSIGNIAS Y TABLAS */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.badge-emerald {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.badge-crimson {
+  background: rgba(239, 68, 68, 0.16);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.badge-amber {
+  background: rgba(245, 158, 11, 0.16);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-cyan {
+  background: rgba(0, 210, 255, 0.15);
+  color: #38BDF8;
+  border: 1px solid rgba(0, 210, 255, 0.4);
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+th {
+  text-align: left;
+  padding: 9px 10px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* TARJETAS DEL MODELO ENTIDAD-RELACIÓN (ER) */
+.er-schema-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(275px, 1fr));
+  gap: 12px;
+}
+
+.er-table-card {
+  background: rgba(11, 19, 43, 0.82);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.er-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 6px;
+}
+
+.er-col {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}

@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ParkCloud Colombia | Consola Multisede ACID, Mapas de Calor y Diagrama ER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg-midnight: #0B132B;
+      --bg-slate: #162447;
+      --bg-card: rgba(22, 36, 71, 0.84);
+      --azure-primary: #0066FF;
+      --telemetry-cyan: #00D2FF;
+      --acid-emerald: #10B981;
+      --thermal-amber: #F59E0B;
+      --occupied-crimson: #EF4444;
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --border-subtle: rgba(148, 163, 184, 0.18);
+      --font-title: 'Space Grotesk', sans-serif;
+      --font-subtitle: 'Plus Jakarta Sans', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 12% 10%, #162447 0%, #0B132B 60%, #060B19 100%);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      min-height: 100vh;
+    }
+    h1, h2, h3, .title-font { font-family: var(--font-title); }
+    .subtitle-font { font-family: var(--font-subtitle); }
+    .mono { font-family: var(--font-mono); }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 14px 26px;
+      background: rgba(11, 19, 43, 0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand-cluster { display: flex; align-items: center; gap: 14px; }
+    .brand-cluster img {
+      width: 44px; height: 44px; border-radius: 10px;
+      border: 1px solid rgba(0, 210, 255, 0.45);
+      object-fit: cover;
+    }
+    .brand-title {
+      font-family: var(--font-title);
+      font-size: 1.22rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #FFFFFF 0%, #00D2FF 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-subtitle {
+      font-family: var(--font-subtitle);
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+    }
+
+    .role-tabs {
+      display: flex;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 5px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      flex-wrap: wrap;
+    }
+    .role-tab {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-subtitle);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .role-tab.active {
+      background: linear-gradient(135deg, var(--azure-primary) 0%, #0047B3 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(0, 102, 255, 0.4);
+    }
+
+    .main-container { max-width: 1480px; margin: 0 auto; padding: 22px 26px 48px; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; width: 4px; height: 100%;
+      background: var(--azure-primary);
+    }
+    .kpi-label {
+      font-family: var(--font-subtitle);
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-family: var(--font-title);
+      font-size: 1.55rem;
+      font-weight: 700;
+    }
+    .kpi-sub { font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .card-title { font-family: var(--font-title); font-size: 1.05rem; font-weight: 700; }
+    .card-subtitle { font-family: var(--font-subtitle); font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .split-layout {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 1100px) { .split-layout { grid-template-columns: 1fr; } }
+
+    .parking-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 8px;
+    }
+    .bay-cell {
+      border-radius: 10px;
+      padding: 8px 6px;
+      border: 1.5px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.75);
+      cursor: pointer;
+      transition: all 0.16s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 76px;
+    }
+    .bay-cell:hover { transform: translateY(-2px); border-color: var(--telemetry-cyan); }
+    .bay-cell.available {
+      background: rgba(16, 185, 129, 0.13);
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+    .bay-cell.occupied {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.65);
+    }
+    .bay-cell.selected {
+      outline: 2.5px solid var(--telemetry-cyan);
+      box-shadow: 0 0 18px rgba(0, 210, 255, 0.45);
+    }
+    .bay-header { display: flex; justify-content: space-between; align-items: center; }
+    .bay-number { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; }
+    .bay-type-tag {
+      font-size: 0.6rem; padding: 1px 4px; border-radius: 4px;
+      background: rgba(255,255,255,0.08); color: var(--text-secondary);
+    }
+    .bay-plate {
+      font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+      color: #FCA5A5; background: rgba(127, 29, 29, 0.55);
+      padding: 2px 5px; border-radius: 4px; text-align: center; margin: 4px 0;
+    }
+    .bay-meta { font-size: 0.63rem; color: var(--text-secondary); display: flex; justify-content: space-between; }
+
+    .heatmap-matrix {
+      display: grid;
+      grid-template-columns: 86px repeat(18, 1fr);
+      gap: 4px;
+      align-items: center;
+      overflow-x: auto;
+    }
+    .hm-hour-header { font-family: var(--font-mono); font-size: 0.66rem; color: var(--text-secondary); text-align: center; }
+    .hm-day-label { font-family: var(--font-subtitle); font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); }
+    .hm-cell {
+      height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; color: #fff;
+    }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .full-width { grid-column: 1 / -1; }
+    label {
+      display: block; font-family: var(--font-subtitle); font-size: 0.72rem;
+      font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;
+    }
+    input, select {
+      width: 100%; background: rgba(11, 19, 43, 0.88); border: 1px solid var(--border-subtle);
+      border-radius: 8px; padding: 8px 11px; color: var(--text-primary); font-size: 0.84rem;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+      border-radius: 9px; font-family: var(--font-subtitle); font-size: 0.8rem;
+      font-weight: 600; border: none; cursor: pointer; transition: all 0.16s ease;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--azure-primary), #0052CC); color: #fff; }
+    .btn-emerald { background: linear-gradient(135deg, var(--acid-emerald), #059669); color: #fff; }
+    .btn-danger { background: linear-gradient(135deg, var(--occupied-crimson), #DC2626); color: #fff; }
+    .btn-outline { background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: var(--text-primary); }
+
+    .badge {
+      display: inline-flex; align-items: center; padding: 3px 8px;
+      border-radius: 999px; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600;
+    }
+    .badge-emerald { background: rgba(16, 185, 129, 0.16); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-crimson { background: rgba(239, 68, 68, 0.16); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+    .badge-amber { background: rgba(245, 158, 11, 0.16); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-cyan { background: rgba(0, 210, 255, 0.15); color: #38BDF8; border: 1px solid rgba(0, 210, 255, 0.4); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th {
+      text-align: left; padding: 9px 10px; font-family: var(--font-subtitle);
+      font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    td { padding: 9px 10px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-cluster">
+      <img src="logo-parkcloud.png" onerror="this.src='/logo-parkcloud.png'" alt="Logo ParkCloud" />
+      <div>
+        <div class="brand-title">ParkCloud Colombia</div>
+        <div class="brand-subtitle">
+          Arquitectura Hexagonal ACID - 5 Sedes Bogotá D.C.
+          <span id="badge-modo" class="badge badge-emerald" style="margin-left:6px;">MODO LOCAL POSTGRESQL ACID</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label style="font-size:0.66rem; margin-bottom:2px;">Sede en Operación (Bogotá)</label>
+      <select id="select-sede" onchange="cambiarSede(this.value)" style="min-width:250px; font-weight:600;"></select>
+    </div>
+
+    <nav class="role-tabs">
+      <button class="role-tab active" id="tab-OPERADOR_SEDE" onclick="activarVista('OPERADOR_SEDE')">
+        1. Recepcionista (Operación # Celda)
+      </button>
+      <button class="role-tab" id="tab-ADMIN_SEDE" onclick="activarVista('ADMIN_SEDE')">
+        2. Admin de Parqueadero (Sede)
+      </button>
+      <button class="role-tab" id="tab-ADMIN_GLOBAL" onclick="activarVista('ADMIN_GLOBAL')">
+        3. Admin Todos los Parqueaderos (Global)
+      </button>
+      <button class="role-tab" id="tab-MODELO_ER" onclick="activarVista('MODELO_ER')">
+        4. Diagrama ER ACID &amp; Marca
+      </button>
+    </nav>
+  </header>
+
+  <main class="main-container">
+    <div id="alert-box" class="card hidden" style="margin-bottom:16px; padding:12px 18px;"></div>
+
+    <!-- VISTA 1: RECEPCIONISTA -->
+    <section id="view-OPERADOR_SEDE">
+      <div class="kpi-grid" id="kpis-operador"></div>
+      <div class="split-layout">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mapa de Celdas de la Sede - Selecciona el # del Parqueadero (A-01 a D-40)</div>
+              <div class="card-subtitle">
+                Haz clic en una celda <strong>VERDE (Libre)</strong> para registrar entrada, o en una <strong>ROJA (Ocupada)</strong> para calcular costo y registrar salida.
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-primary" id="btn-modo-op" onclick="setModoGrilla('OPERATIVO')">Libre / Ocupado</button>
+              <button class="btn btn-outline" id="btn-modo-hm" onclick="setModoGrilla('MAPA_CALOR')">Mapa de Calor</button>
+            </div>
+          </div>
+          <div class="parking-grid" id="grid-operador"></div>
+        </div>
+
+        <div class="card" id="panel-transaccion"></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:18px; margin-top:18px;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Vehículos Actualmente Estacionados en la Sede</div>
+              <div class="card-subtitle">Haz clic en "Seleccionar Salida" para liquidar el cobro y liberar la celda</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-activas"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Últimas Facturas Liquidadas (Inmutables ACID)</div>
+              <div class="card-subtitle">Pagos asentados atómicamente en PostgreSQL</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-pagos"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA 2: ADMIN SEDE -->
+    <section id="view-ADMIN_SEDE" class="hidden">
+      <div class="kpi-grid" id="kpis-admin-sede"></div>
+      <div style="display:grid; grid-template-columns: 1fr 1.15fr; gap:18px; margin-bottom:18px;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mapa de Calor Espacial de las 40 Celdas (# Parqueadero)</div>
+              <div class="card-subtitle">Coloración térmica según rotaciones históricas y minutos acumulados</div>
+            </div>
+            <span class="badge badge-amber">ROTACIÓN ESPACIAL</span>
+          </div>
+          <div class="parking-grid" id="grid-heatmap-sede"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mapa de Calor Horario de la Sede (7 Días x 18 Horas)</div>
+              <div class="card-subtitle">Concentración de ingresos vehiculares entre las 05:00 y las 22:00</div>
+            </div>
+            <span class="badge badge-cyan">DEMANDA 7x18</span>
+          </div>
+          <div class="heatmap-matrix" id="hm-horario-sede"></div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:18px;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Tarifas Vigentes de la Sede (COP)</div>
+              <div class="card-subtitle">Parametrización transaccional por tipo de vehículo</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-tarifas"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Bóveda LPR y Auditoría Justificada (Ley 1581 de 2012)</div>
+              <div class="card-subtitle">Ciclo de vida Hot (0-30d), Cool (31-90d) y Archive (91-365d)</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-evidencias"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA 3: ADMIN GLOBAL -->
+    <section id="view-ADMIN_GLOBAL" class="hidden">
+      <div class="kpi-grid" id="kpis-global"></div>
+      <div style="display:grid; grid-template-columns: 1.25fr 1fr; gap:18px; margin-bottom:18px;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Desempeño Consolidado de las 5 Sedes en Bogotá D.C.</div>
+              <div class="card-subtitle">Chapinero, Calle 100, Centro Internacional, Salitre Plaza y Usaquén</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-sedes-global"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Arquitectura Hexagonal (Ports &amp; Adapters) + FinOps Azure</div>
+              <div class="card-subtitle">Conmutación en caliente entre PostgreSQL/Disco Local y Microsoft Azure</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; margin-bottom:12px;">
+            <button class="btn btn-emerald" style="flex:1; justify-content:center;" onclick="switchProvider('LOCAL')">
+              Modo LOCAL (PostgreSQL + Disco)
+            </button>
+            <button class="btn btn-primary" style="flex:1; justify-content:center;" onclick="switchProvider('AZURE_CLOUD')">
+              Modo AZURE CLOUD (Blob + ADLS Gen2)
+            </button>
+          </div>
+          <div id="info-puertos" style="background:rgba(11,19,43,0.85); padding:12px; border-radius:10px; font-size:0.78rem; margin-bottom:12px;"></div>
+          <div class="table-wrap"><table id="tabla-finops"></table></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Mapa de Calor Temporal Consolidado de la Red (5 Sedes Bogotá - 7 Días x 18 Horas)</div>
+            <div class="card-subtitle">Picos metropolitanos en ingreso laboral (07:00-09:00), mediodía (12:00-14:00) y retorno (17:00-19:00)</div>
+          </div>
+          <span class="badge badge-amber">HEATMAP MULTISEDE</span>
+        </div>
+        <div class="heatmap-matrix" id="hm-horario-global"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Consolidación Nocturna Batch en Apache Parquet (Compresión Snappy + SHA-256)</div>
+            <div class="card-subtitle">Ingesta analítica hacia Azure Data Lake Storage Gen2 / Synapse Serverless SQL</div>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="tabla-parquet"></table></div>
+      </div>
+    </section>
+
+    <!-- VISTA 4: DIAGRAMA ER ACID & IDENTIDAD DE MARCA -->
+    <section id="view-MODELO_ER" class="hidden">
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Diagrama Entidad-Relación (ER) PostgreSQL 3FN con Garantías ACID y Ley 1581</div>
+            <div class="card-subtitle">Haz clic sobre cualquier tabla para inspeccionar sus llaves primarias, foráneas y restricciones ACID</div>
+          </div>
+          <span class="badge badge-emerald">10 TABLAS NUCLEARES + 3 PROCEDIMIENTOS ACID</span>
+        </div>
+
+        <div style="background:#070d1f; border:1px solid var(--border-subtle); border-radius:12px; padding:16px; overflow-x:auto;">
+          <svg viewBox="0 0 1120 460" style="width:100%; min-width:940px; height:auto;">
+            <g stroke="#00D2FF" stroke-width="2" fill="none" stroke-dasharray="4 2">
+              <path d="M 220 85 L 290 85" />
+              <path d="M 490 85 L 560 85" />
+              <path d="M 120 140 L 120 200" />
+              <path d="M 220 385 L 290 385" />
+              <path d="M 490 385 L 560 385" />
+              <path d="M 665 145 L 665 200" />
+              <path d="M 665 335 L 665 305" />
+              <path d="M 785 245 L 870 115" />
+              <path d="M 785 255 L 870 255" />
+              <path d="M 980 305 L 980 350" />
+              <path d="M 220 250 L 290 250" />
+            </g>
+            <g transform="translate(20, 30)">
+              <rect width="200" height="110" rx="8" fill="#162447" stroke="#0066FF" stroke-width="2" />
+              <rect width="200" height="28" rx="8" fill="#0066FF" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">1. sedes (5 Bogotá)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_sede (SERIAL)</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">codigo_sede UNIQUE</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">capacidad_total (200)</text>
+              <text x="12" y="96" fill="#6EE7B7" font-size="10">CHECK (cupos &gt;= 0)</text>
+            </g>
+            <g transform="translate(290, 30)">
+              <rect width="200" height="110" rx="8" fill="#162447" stroke="#0284C7" stroke-width="2" />
+              <rect width="200" height="28" rx="8" fill="#0284C7" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">2. zonas_sede (1:N)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_zona | FK id_sede</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">codigo_zona (Z-A..Z-D)</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">tipo_zona, piso</text>
+            </g>
+            <g transform="translate(560, 30)">
+              <rect width="220" height="115" rx="8" fill="#162447" stroke="#10B981" stroke-width="2" />
+              <rect width="220" height="28" rx="8" fill="#10B981" />
+              <text x="12" y="19" fill="#062E22" font-weight="800" font-size="12">3. celdas (# Parqueadero)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_celda | FK sede, zona</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">numero_celda (A-01..D-40)</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">estado, rotaciones_historicas</text>
+              <text x="12" y="96" fill="#6EE7B7" font-size="10">SELECT ... FOR UPDATE</text>
+            </g>
+            <g transform="translate(20, 200)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#64748B" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#475569" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">tarifas_sede (1:N)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_tarifa | FK id_sede</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">tipo_vehiculo</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">valor_minuto_cop, plena_dia</text>
+            </g>
+            <g transform="translate(290, 200)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#3B82F6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#2563EB" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">10. cierres_parquet</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_cierre | FK id_sede</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">uri_archivo_parquet</text>
+              <text x="12" y="78" fill="#93C5FD" font-size="10">ADLS Gen2 Snappy + SHA256</text>
+            </g>
+            <g transform="translate(550, 200)">
+              <rect width="235" height="105" rx="8" fill="#2A1215" stroke="#EF4444" stroke-width="2.5" />
+              <rect width="235" height="28" rx="8" fill="#EF4444" />
+              <text x="12" y="19" fill="#FFF" font-weight="800" font-size="12">6. estancias (Núcleo ACID)</text>
+              <text x="12" y="46" fill="#FCA5A5" font-size="11" font-family="JetBrains Mono">PK id_estancia (BIGSERIAL)</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11" font-family="JetBrains Mono">FK id_sede, id_celda, id_vehiculo</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">timestamp_entrada / salida</text>
+              <text x="12" y="94" fill="#FDE68A" font-size="10">UNIQUE parcial WHERE ACTIVA</text>
+            </g>
+            <g transform="translate(20, 335)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#8B5CF6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#7C3AED" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">convenios_empresariales</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_convenio</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">nit_empresa UNIQUE</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">porcentaje_descuento (0-100)</text>
+            </g>
+            <g transform="translate(290, 335)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#8B5CF6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#8B5CF6" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">4. clientes (Ley 1581)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_cliente | FK convenio</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">documento_identidad UNIQUE</text>
+              <text x="12" y="78" fill="#C4B5FD" font-size="10">acepta_habeas_data_ley1581</text>
+            </g>
+            <g transform="translate(560, 335)">
+              <rect width="220" height="100" rx="8" fill="#162447" stroke="#6366F1" stroke-width="2" />
+              <rect width="220" height="26" rx="8" fill="#4F46E5" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">5. vehiculos (SHA-256)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_vehiculo | FK cliente</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">placa UNIQUE, tipo, marca</text>
+              <text x="12" y="78" fill="#A5B4FC" font-size="10" font-family="JetBrains Mono">placa_hash_sha256 (64 hex)</text>
+            </g>
+            <g transform="translate(870, 55)">
+              <rect width="225" height="110" rx="8" fill="#162447" stroke="#F59E0B" stroke-width="2" />
+              <rect width="225" height="28" rx="8" fill="#D97706" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">7. pagos (1:1 Inmutable)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_pago | FK id_estancia</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">numero_comprobante UNIQUE</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">metodo_pago, iva_cop (19%)</text>
+              <text x="12" y="96" fill="#FDE68A" font-size="10">total_pagado_cop CHECK &gt;= 0</text>
+            </g>
+            <g transform="translate(870, 200)">
+              <rect width="225" height="105" rx="8" fill="#162447" stroke="#14B8A6" stroke-width="2" />
+              <rect width="225" height="28" rx="8" fill="#0D9488" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">8. evidencias_lpr (Blob)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_evidencia | FK estancia</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">uri_blob (evidencias/año/mes)</text>
+              <text x="12" y="80" fill="#5EEAD4" font-size="10">tier: HOT / COOL / ARCHIVE</text>
+            </g>
+            <g transform="translate(870, 350)">
+              <rect width="225" height="90" rx="8" fill="#162447" stroke="#EC4899" stroke-width="2" />
+              <rect width="225" height="26" rx="8" fill="#DB2777" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">9. auditoria_evidencias</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_auditoria | FK evidencia</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">codigo_tique_soporte</text>
+              <text x="12" y="78" fill="#F9A8D4" font-size="10">motivo_inspeccion (Ley 1581)</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Identidad de Marca -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Identidad de Marca Definida - ParkCloud Colombia</div>
+            <div class="card-subtitle">Logo minimalista Nano Banana, 3 familias tipográficas y paleta cromática soberana</div>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:18px;">
+          <div style="background:rgba(11,19,43,0.8); padding:14px; border-radius:10px; border:1px solid var(--border-subtle);">
+            <h3 style="font-size:0.95rem; color:var(--telemetry-cyan); margin-bottom:8px;">3 Tipografías Oficiales</h3>
+            <p style="font-family:var(--font-title); font-size:1.1rem; font-weight:700; margin-bottom:6px;">1. Títulos: Space Grotesk Bold</p>
+            <p style="font-family:var(--font-subtitle); font-size:0.95rem; font-weight:600; margin-bottom:6px;">2. Subtítulos y UI: Plus Jakarta Sans SemiBold</p>
+            <p style="font-family:var(--font-body); font-size:0.86rem;">3. Contenido y Datos: Inter Regular + <span class="mono">JetBrains Mono (Placas, Hash SHA-256 y COP)</span></p>
+          </div>
+          <div style="background:rgba(11,19,43,0.8); padding:14px; border-radius:10px; border:1px solid var(--border-subtle); display:grid; grid-template-columns:repeat(3,1fr); gap:8px; font-size:0.74rem;">
+            <div style="background:#0B132B; padding:10px; border-radius:8px; border:1px solid #334155;"><strong>Midnight Navy</strong><div class="mono">#0B132B</div></div>
+            <div style="background:#0066FF; padding:10px; border-radius:8px;"><strong>Azure Blue</strong><div class="mono">#0066FF</div></div>
+            <div style="background:#00D2FF; color:#051923; padding:10px; border-radius:8px;"><strong>Telemetry Cyan</strong><div class="mono">#00D2FF</div></div>
+            <div style="background:#10B981; color:#052e16; padding:10px; border-radius:8px;"><strong>ACID Emerald</strong><div class="mono">#10B981</div></div>
+            <div style="background:#F59E0B; color:#271701; padding:10px; border-radius:8px;"><strong>Thermal Amber</strong><div class="mono">#F59E0B</div></div>
+            <div style="background:#EF4444; padding:10px; border-radius:8px;"><strong>Occupied Crimson</strong><div class="mono">#EF4444</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = 'http://localhost:4000/api';
+    let vistaActual = 'OPERADOR_SEDE';
+    let idSedeActual = 1;
+    let modoGrilla = 'OPERATIVO';
+    let globalData = null;
+    let sedeData = null;
+    let celdaActiva = null;
+    let preliquidacion = null;
+
+    const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    const horasOp = [5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22];
+
+    const fmtCOP = (v) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(v || 0));
+
+    function mostrarAlerta(msg, esError = false) {
+      const box = document.getElementById('alert-box');
+      box.classList.remove('hidden');
+      box.style.borderColor = esError ? 'rgba(239,68,68,0.6)' : 'rgba(16,185,129,0.6)';
+      box.style.background = esError ? 'rgba(239,68,68,0.14)' : 'rgba(16,185,129,0.14)';
+      box.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:600;font-size:0.85rem;color:${esError ? '#fca5a5' : '#6ee7b7'}">${esError ? '[ALERTA ACID]' : '[ACID COMMIT OK]'} ${msg}</span>
+        <button class="btn btn-outline" style="padding:3px 8px;" onclick="document.getElementById('alert-box').classList.add('hidden')">Cerrar</button>
+      </div>`;
+    }
+
+    async function cargarTodo() {
+      try {
+        const resG = await fetch(`${API_BASE}/dashboard/global`);
+        globalData = await resG.json();
+        const resS = await fetch(`${API_BASE}/dashboard/sede/${idSedeActual}`);
+        sedeData = await resS.json();
+        renderSelectorSedes();
+        if (!celdaActiva && sedeData.celdas_mapa_calor.length) {
+          await seleccionarCeldaPorId(sedeData.celdas_mapa_calor[0].id_celda);
+        } else if (celdaActiva) {
+          await seleccionarCeldaPorId(celdaActiva.id_celda);
+        }
+        renderTodo();
+      } catch (e) {
+        mostrarAlerta('Inicia el servidor Backend en http://localhost:4000 para operar transacciones en vivo.', true);
+      }
+    }
+
+    function renderSelectorSedes() {
+      const sel = document.getElementById('select-sede');
+      sel.innerHTML = globalData.sedes.map(s =>
+        `<option value="${s.id_sede}" ${Number(s.id_sede) === Number(idSedeActual) ? 'selected' : ''}>[${s.codigo_sede}] ${s.nombre} (${s.ocupacion_porcentaje}% ocup.)</option>`
+      ).join('');
+      const badge = document.getElementById('badge-modo');
+      const esCloud = globalData.arquitectura.modo_activo === 'AZURE_CLOUD';
+      badge.className = 'badge ' + (esCloud ? 'badge-cyan' : 'badge-emerald');
+      badge.textContent = esCloud ? 'MODO CLOUD AZURE ACTIVO' : 'MODO LOCAL POSTGRESQL ACID';
+    }
+
+    async function cambiarSede(id) {
+      idSedeActual = Number(id);
+      celdaActiva = null;
+      await cargarTodo();
+    }
+
+    function activarVista(v) {
+      vistaActual = v;
+      ['OPERADOR_SEDE', 'ADMIN_SEDE', 'ADMIN_GLOBAL', 'MODELO_ER'].forEach(k => {
+        document.getElementById('view-' + k).classList.toggle('hidden', k !== v);
+        document.getElementById('tab-' + k).classList.toggle('active', k === v);
+      });
+      renderTodo();
+    }
+
+    function setModoGrilla(m) {
+      modoGrilla = m;
+      document.getElementById('btn-modo-op').className = 'btn ' + (m === 'OPERATIVO' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('btn-modo-hm').className = 'btn ' + (m === 'MAPA_CALOR' ? 'btn-primary' : 'btn-outline');
+      renderOperador();
+    }
+
+    async function seleccionarCeldaPorId(idCelda) {
+      celdaActiva = sedeData.celdas_mapa_calor.find(c => Number(c.id_celda) === Number(idCelda)) || sedeData.celdas_mapa_calor[0];
+      preliquidacion = null;
+      if (celdaActiva && celdaActiva.estado === 'OCUPADA' && celdaActiva.estancia_activa) {
+        const r = await fetch(`${API_BASE}/estancias/${celdaActiva.estancia_activa.id_estancia}/preliquidacion`);
+        if (r.ok) preliquidacion = await r.json();
+      }
+      renderOperador();
+    }
+
+    function estiloCalorCelda(c, forzarCalor = false) {
+      if (!forzarCalor && modoGrilla === 'OPERATIVO') return '';
+      const p = Number(c.intensidad_calor_pct || 0);
+      if (p >= 80) return 'background:linear-gradient(145deg,rgba(239,68,68,0.82),rgba(153,27,27,0.92));border-color:#FCA5A5;';
+      if (p >= 60) return 'background:linear-gradient(145deg,rgba(245,158,11,0.75),rgba(180,83,9,0.9));border-color:#FDE68A;';
+      if (p >= 40) return 'background:linear-gradient(145deg,rgba(16,185,129,0.58),rgba(4,120,87,0.82));border-color:#6EE7B7;';
+      return 'background:linear-gradient(145deg,rgba(2,132,199,0.45),rgba(15,61,104,0.78));border-color:#7DD3FC;';
+    }
+
+    function renderOperador() {
+      if (!sedeData) return;
+      const ocupadas = sedeData.estancias_activas.length;
+      const libres = sedeData.celdas_mapa_calor.length - ocupadas;
+      document.getElementById('kpis-operador').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Sede Activa</div><div class="kpi-value" style="font-size:1.2rem;">${sedeData.sede.nombre}</div><div class="kpi-sub">${sedeData.sede.localidad} - ${sedeData.sede.direccion}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Grilla Interactiva (40 Celdas)</div><div class="kpi-value"><span style="color:var(--acid-emerald)">${libres} Libres</span> / <span style="color:var(--occupied-crimson)">${ocupadas} Ocup.</span></div><div class="kpi-sub">Capacidad física sede: ${sedeData.sede.capacidad_total} cupos</div></div>
+        <div class="kpi-card"><div class="kpi-label">Celda Seleccionada</div><div class="kpi-value mono" style="color:var(--telemetry-cyan);">#${celdaActiva ? celdaActiva.numero_celda : 'A-01'}</div><div class="kpi-sub">Estado: ${celdaActiva ? celdaActiva.estado : ''}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Recaudo Acumulado Sede</div><div class="kpi-value mono" style="color:var(--acid-emerald);">${fmtCOP(sedeData.sede.recaudo_hoy_cop)}</div><div class="kpi-sub">Transacciones ACID verificadas</div></div>
+      `;
+
+      document.getElementById('grid-operador').innerHTML = sedeData.celdas_mapa_calor.map(c => {
+        const cls = modoGrilla === 'OPERATIVO' ? (c.estado === 'DISPONIBLE' ? 'available' : 'occupied') : '';
+        const sel = celdaActiva && Number(celdaActiva.id_celda) === Number(c.id_celda) ? 'selected' : '';
+        return `<div class="bay-cell ${cls} ${sel}" style="${estiloCalorCelda(c)}" onclick="seleccionarCeldaPorId(${c.id_celda})">
+          <div class="bay-header"><span class="bay-number">#${c.numero_celda}</span><span class="bay-type-tag">${c.tipo_vehiculo_permitido.slice(0,4)}</span></div>
+          ${c.estado === 'OCUPADA' && c.estancia_activa ? `<div class="bay-plate">${c.estancia_activa.placa}</div>` : `<div style="font-size:0.7rem;font-weight:700;color:#6ee7b7;text-align:center;">LIBRE</div>`}
+          <div class="bay-meta"><span>P${c.piso}</span><span class="mono">${modoGrilla === 'MAPA_CALOR' ? c.intensidad_calor_pct + '%' : c.rotaciones_historicas + 'r'}</span></div>
+        </div>`;
+      }).join('');
+
+      const panel = document.getElementById('panel-transaccion');
+      if (celdaActiva && celdaActiva.estado === 'DISPONIBLE') {
+        panel.innerHTML = `
+          <div class="card-header">
+            <div>
+              <span class="badge badge-emerald" style="margin-bottom:6px;">PARQUEADERO LIBRE PARA INGRESO</span>
+              <div class="card-title">Registrar Entrada en Celda <span class="mono" style="color:var(--telemetry-cyan);">#${celdaActiva.numero_celda}</span></div>
+              <div class="card-subtitle">Zona: ${celdaActiva.nombre_zona} | Sugerido: ${celdaActiva.tipo_vehiculo_permitido}</div>
+            </div>
+          </div>
+          <div style="background:rgba(0,210,255,0.08);border:1px dashed rgba(0,210,255,0.45);border-radius:10px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-size:0.75rem;font-weight:700;color:var(--telemetry-cyan);">Cámara LPR / Talanquera IoT (En desarrollo próximamente)</div>
+              <div style="font-size:0.7rem;color:var(--text-secondary);">Autocompleta datos de prueba o llena los campos manualmente:</div>
+            </div>
+            <button class="btn btn-outline" onclick="autocompletarIngreso()">Autocompletar Demo</button>
+          </div>
+          <div class="form-grid">
+            <div><label>Placa del Vehículo *</label><input id="in-placa" class="mono" placeholder="Ej. KLM842" style="text-transform:uppercase;font-weight:700;" /></div>
+            <div><label>Tipo de Vehículo *</label>
+              <select id="in-tipo">
+                <option value="AUTOMOVIL" ${celdaActiva.tipo_vehiculo_permitido==='AUTOMOVIL'?'selected':''}>AUTOMÓVIL ($115/min)</option>
+                <option value="CAMIONETA" ${celdaActiva.tipo_vehiculo_permitido==='CAMIONETA'?'selected':''}>CAMIONETA ($145/min)</option>
+                <option value="MOTOCICLETA" ${celdaActiva.tipo_vehiculo_permitido==='MOTOCICLETA'?'selected':''}>MOTOCICLETA ($80/min)</option>
+                <option value="ELECTRICO" ${celdaActiva.tipo_vehiculo_permitido==='ELECTRICO'?'selected':''}>ELÉCTRICO ($95/min)</option>
+              </select>
+            </div>
+            <div><label>Marca / Línea</label><input id="in-marca" placeholder="Ej. Mazda 3 Touring" /></div>
+            <div><label>Color</label><input id="in-color" placeholder="Ej. Gris Titán" /></div>
+            <div><label>Documento Cliente (CC / NIT) *</label><input id="in-doc" class="mono" placeholder="Ej. 1020754891" /></div>
+            <div><label>Nombre Completo del Cliente *</label><input id="in-nombre" placeholder="Ej. Andrés Felipe Castellanos" /></div>
+            <div><label>Teléfono Cliente</label><input id="in-tel" class="mono" placeholder="Ej. 3104589210" /></div>
+            <div><label>Modalidad</label>
+              <select id="in-mod">
+                <option value="ROTATIVO">ROTATIVO POR MINUTO</option>
+                <option value="CONVENIO_CORPORATIVO">CONVENIO CORPORATIVO (25% Dcto.)</option>
+                <option value="MENSUALIDAD">MENSUALIDAD</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-emerald" style="width:100%;justify-content:center;padding:12px;margin-top:14px;" onclick="confirmarIngreso()">
+            Guardar Hora de Entrada y Ocupar Parqueadero #${celdaActiva.numero_celda}
+          </button>
+        `;
+      } else if (celdaActiva && preliquidacion) {
+        panel.innerHTML = `
+          <div class="card-header">
+            <div>
+              <span class="badge badge-crimson" style="margin-bottom:6px;">PARQUEADERO OCUPADO - LIQUIDAR SALIDA</span>
+              <div class="card-title">Liquidar Salida de Celda <span class="mono" style="color:#fca5a5;">#${celdaActiva.numero_celda}</span></div>
+              <div class="card-subtitle">Se calcula automáticamente el tiempo, el IVA y se libera el # del parqueadero.</div>
+            </div>
+          </div>
+          <div style="background:rgba(11,19,43,0.85);padding:12px;border-radius:10px;border:1px solid var(--border-subtle);margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span class="mono" style="font-size:1.25rem;font-weight:800;color:#fca5a5;">PLACA: ${preliquidacion.placa}</span>
+              <span class="badge badge-cyan mono">${preliquidacion.codigo_tique}</span>
+            </div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);">Cliente: <strong>${preliquidacion.nombre_cliente}</strong> | Vehículo: ${preliquidacion.tipo_vehiculo}</div>
+          </div>
+          <div style="background:rgba(22,36,71,0.92);padding:14px;border-radius:10px;border:1px solid rgba(0,210,255,0.35);margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.84rem;"><span>Tiempo de Permanencia:</span><strong class="mono">${preliquidacion.minutos_transcurridos} minutos</strong></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.84rem;"><span>Valor Bruto (${fmtCOP(preliquidacion.valor_minuto_aplicado_cop)}/min):</span><span class="mono">${fmtCOP(preliquidacion.valor_bruto_cop)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.84rem;"><span>Descuento Aplicado:</span><span class="mono" style="color:var(--acid-emerald)">- ${fmtCOP(preliquidacion.valor_descuento_cop)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.84rem;"><span>IVA (19%):</span><span class="mono">${fmtCOP(preliquidacion.valor_iva_cop)}</span></div>
+            <hr style="border:none;border-top:1px solid var(--border-subtle);margin:8px 0;" />
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-weight:700;">TOTAL A PAGAR:</span>
+              <span class="mono" style="font-size:1.45rem;font-weight:800;color:var(--acid-emerald);">${fmtCOP(preliquidacion.valor_neto_pagar_cop)}</span>
+            </div>
+          </div>
+          <div>
+            <label>Método de Pago *</label>
+            <select id="out-metodo" style="font-weight:700;">
+              <option value="EFECTIVO">EFECTIVO EN CAJA</option>
+              <option value="TARJETA_DEBITO_CREDITO">TARJETA DÉBITO / CRÉDITO</option>
+              <option value="PSE_NEQUI_DAVIPLATA">PSE / NEQUI / DAVIPLATA</option>
+              <option value="CARGO_CONVENIO">CARGO A CONVENIO EMPRESARIAL</option>
+            </select>
+          </div>
+          <button class="btn btn-danger" style="width:100%;justify-content:center;padding:12px;margin-top:14px;" onclick="confirmarSalida(${preliquidacion.id_estancia})">
+            Confirmar Pago y Desmarcar Parqueadero #${celdaActiva.numero_celda}
+          </button>
+        `;
+      }
+
+      document.getElementById('tabla-activas').innerHTML = `
+        <thead><tr><th># Celda</th><th>Placa</th><th>Cliente</th><th>Minutos</th><th>Acción</th></tr></thead>
+        <tbody>${sedeData.estancias_activas.map(e => `
+          <tr>
+            <td><span class="badge badge-crimson mono">#${e.numero_celda}</span></td>
+            <td class="mono" style="font-weight:700;">${e.placa}</td>
+            <td>${e.nombre_cliente}</td>
+            <td class="mono">${e.minutos_actuales} min</td>
+            <td><button class="btn btn-outline" style="padding:4px 8px;font-size:0.72rem;" onclick="seleccionarCeldaPorId(${e.id_celda})">Seleccionar Salida</button></td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+
+      document.getElementById('tabla-pagos').innerHTML = `
+        <thead><tr><th>Factura</th><th>Placa</th><th>Método</th><th>Total COP</th></tr></thead>
+        <tbody>${(sedeData.pagos_recientes || []).slice(0, 7).map(p => `
+          <tr>
+            <td class="mono">${p.numero_comprobante}</td>
+            <td class="mono" style="font-weight:700;">${p.placa}</td>
+            <td><span class="badge badge-cyan">${p.metodo_pago}</span></td>
+            <td class="mono" style="color:var(--acid-emerald);font-weight:700;">${fmtCOP(p.total_pagado_cop)}</td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+    }
+
+    function autocompletarIngreso() {
+      const letras = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+      const rl = () => letras[Math.floor(Math.random() * letras.length)];
+      document.getElementById('in-placa').value = `${rl()}${rl()}${rl()}${Math.floor(100 + Math.random()*899)}`;
+      document.getElementById('in-marca').value = 'Mazda CX-30 Grand Touring';
+      document.getElementById('in-color').value = 'Gris Polimetal';
+      document.getElementById('in-doc').value = String(Math.floor(1015000000 + Math.random()*80000000));
+      document.getElementById('in-nombre').value = 'Carlos Eduardo Vargas';
+      document.getElementById('in-tel').value = '3158924102';
+    }
+
+    async function confirmarIngreso() {
+      const payload = {
+        id_sede: idSedeActual,
+        id_celda: celdaActiva.id_celda,
+        placa: document.getElementById('in-placa').value,
+        tipo_vehiculo: document.getElementById('in-tipo').value,
+        marca: document.getElementById('in-marca').value,
+        color: document.getElementById('in-color').value,
+        documento_cliente: document.getElementById('in-doc').value,
+        nombre_cliente: document.getElementById('in-nombre').value,
+        telefono_cliente: document.getElementById('in-tel').value,
+        modalidad_tarifa: document.getElementById('in-mod').value,
+        id_convenio: document.getElementById('in-mod').value === 'CONVENIO_CORPORATIVO' ? 1 : null,
+      };
+      const res = await fetch(`${API_BASE}/estancias/ingreso`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) return mostrarAlerta(data.error || 'Error registrando entrada', true);
+      mostrarAlerta(`Entrada registrada en celda #${data.numero_celda_asignada} | Tique ${data.codigo_tique_generado} | Latencia ACID: ${data.latencia_ms} ms`);
+      await cargarTodo();
+    }
+
+    async function confirmarSalida(idEstancia) {
+      const metodo = document.getElementById('out-metodo').value;
+      const res = await fetch(`${API_BASE}/estancias/${idEstancia}/salida`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ metodo_pago: metodo })
+      });
+      const data = await res.json();
+      if (!res.ok) return mostrarAlerta(data.error || 'Error liquidando salida', true);
+      mostrarAlerta(`Salida liquidada: Comprobante ${data.numero_comprobante_emitido} por ${fmtCOP(data.total_pagado_cop)} (${data.metodo_pago_registrado}) | Celda #${data.numero_celda_liberada} LIBERADA.`);
+      await cargarTodo();
+    }
+
+    function colorHeatmap(pct) {
+      if (pct >= 82) return '#DC2626';
+      if (pct >= 64) return '#D97706';
+      if (pct >= 44) return '#059669';
+      if (pct >= 25) return '#0284C7';
+      return '#1E3A8A';
+    }
+
+    function construirMatrizHeatmapHTML(lista) {
+      let html = '<div></div>' + horasOp.map(h => `<div class="hm-hour-header">${h}h</div>`).join('');
+      diasSemana.forEach((d, idx) => {
+        const dia = idx + 1;
+        html += `<div class="hm-day-label">${d}</div>`;
+        horasOp.forEach(h => {
+          const item = (lista || []).find(x => x.dia_semana === dia && x.hora_dia === h) || { cantidad_vehiculos: 0, intensidad_pct: 0 };
+          html += `<div class="hm-cell" style="background:${colorHeatmap(item.intensidad_pct)}" title="${d} ${h}:00 -> ${item.cantidad_vehiculos} vehículos">${item.cantidad_vehiculos}</div>`;
+        });
+      });
+      return html;
+    }
+
+    function renderAdminSede() {
+      if (!sedeData) return;
+      document.getElementById('kpis-admin-sede').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Sede Administrada</div><div class="kpi-value" style="font-size:1.2rem;">${sedeData.sede.nombre}</div><div class="kpi-sub">Código: ${sedeData.sede.codigo_sede}</div></div>
+        <div class="kpi-card"><div class="kpi-label">Ocupación Física</div><div class="kpi-value mono" style="color:var(--thermal-amber)">${sedeData.sede.ocupacion_porcentaje}%</div><div class="kpi-sub">${sedeData.sede.capacidad_total - sedeData.sede.cupos_disponibles} / ${sedeData.sede.capacidad_total} cupos</div></div>
+        <div class="kpi-card"><div class="kpi-label">Recaudo Histórico Sede</div><div class="kpi-value mono" style="color:var(--acid-emerald)">${fmtCOP(sedeData.sede.recaudo_hoy_cop)}</div><div class="kpi-sub">${sedeData.sede.estancias_finalizadas} estancias cerradas</div></div>
+        <div class="kpi-card"><div class="kpi-label">Evidencias LPR Ley 1581</div><div class="kpi-value mono" style="color:var(--telemetry-cyan)">${sedeData.evidencias_lpr.length} Objetos</div><div class="kpi-sub">Ciclo Hot / Cool / Archive</div></div>
+      `;
+
+      document.getElementById('grid-heatmap-sede').innerHTML = sedeData.celdas_mapa_calor.map(c => `
+        <div class="bay-cell" style="${estiloCalorCelda(c, true)};min-height:62px;padding:6px;">
+          <div class="bay-header"><span class="bay-number">#${c.numero_celda}</span><span class="mono" style="font-size:0.65rem;">${c.intensidad_calor_pct}%</span></div>
+          <div style="font-size:0.66rem;font-weight:700;">${c.rotaciones_historicas} rot.</div>
+          <div class="mono" style="font-size:0.6rem;color:#cbd5e1;">${c.minutos_ocupacion_acumulados}m</div>
+        </div>
+      `).join('');
+
+      document.getElementById('hm-horario-sede').innerHTML = construirMatrizHeatmapHTML(sedeData.heatmap_horario);
+
+      document.getElementById('tabla-tarifas').innerHTML = `
+        <thead><tr><th>Tipo Vehículo</th><th>$/Minuto</th><th>Plena Día</th><th>Mensualidad</th></tr></thead>
+        <tbody>${sedeData.tarifas.map(t => `
+          <tr>
+            <td style="font-weight:700;">${t.tipo_vehiculo}</td>
+            <td class="mono">${fmtCOP(t.valor_minuto_cop)}</td>
+            <td class="mono">${fmtCOP(t.tarifa_plena_dia_cop)}</td>
+            <td class="mono">${fmtCOP(t.valor_mensualidad_cop)}</td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+
+      document.getElementById('tabla-evidencias').innerHTML = `
+        <thead><tr><th>Placa / Hash SHA-256</th><th>Tier</th><th>URI Blob</th><th>Auditorías</th></tr></thead>
+        <tbody>${sedeData.evidencias_lpr.map(ev => `
+          <tr>
+            <td><div class="mono" style="font-weight:700;">${ev.placa}</div><div class="mono" style="font-size:0.64rem;color:var(--text-muted);">${(ev.placa_hash_sha256||'').slice(0,16)}...</div></td>
+            <td><span class="badge ${ev.tier_almacenamiento==='HOT'?'badge-emerald':ev.tier_almacenamiento==='COOL'?'badge-cyan':'badge-amber'}">${ev.tier_almacenamiento}</span></td>
+            <td class="mono" style="font-size:0.7rem;">${ev.uri_blob}</td>
+            <td class="mono">${ev.total_auditorias}</td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+    }
+
+    function renderAdminGlobal() {
+      if (!globalData) return;
+      const k = globalData.kpis_globales;
+      document.getElementById('kpis-global').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">Red Operativa Bogotá</div><div class="kpi-value mono">${k.total_sedes} Sedes</div><div class="kpi-sub">${k.capacidad_red_total} cupos instalados</div></div>
+        <div class="kpi-card"><div class="kpi-label">Ocupación Consolidada Red</div><div class="kpi-value mono" style="color:var(--telemetry-cyan)">${k.ocupacion_red_porcentaje}%</div><div class="kpi-sub">${k.cupos_ocupados_red} ocupados / ${k.cupos_disponibles_red} disponibles</div></div>
+        <div class="kpi-card"><div class="kpi-label">Recaudo Consolidado Red</div><div class="kpi-value mono" style="color:var(--acid-emerald)">${fmtCOP(k.recaudo_total_red_cop)}</div><div class="kpi-sub">100% Consistencia ACID</div></div>
+        <div class="kpi-card"><div class="kpi-label">Presupuesto FinOps Azure</div><div class="kpi-value mono" style="color:var(--thermal-amber)">$${globalData.finops.costo_optimizado_apagado_programado_usd_mes} USD/mes</div><div class="kpi-sub">Ahorro 60.1% vs $${globalData.finops.costo_total_24x7_usd_mes} USD On-Demand</div></div>
+      `;
+
+      document.getElementById('tabla-sedes-global').innerHTML = `
+        <thead><tr><th>Sede</th><th>Localidad</th><th>Ocupación</th><th>Recaudo</th><th>Batch Parquet</th></tr></thead>
+        <tbody>${globalData.sedes.map(s => `
+          <tr>
+            <td><strong>${s.nombre}</strong><div class="mono" style="font-size:0.68rem;color:var(--text-muted)">${s.codigo_sede}</div></td>
+            <td>${s.localidad}</td>
+            <td><span class="badge ${s.ocupacion_porcentaje >= 35 ? 'badge-amber' : 'badge-emerald'}">${s.ocupacion_porcentaje}%</span></td>
+            <td class="mono" style="color:var(--acid-emerald);font-weight:700;">${fmtCOP(s.recaudo_hoy_cop)}</td>
+            <td><button class="btn btn-outline" style="padding:4px 8px;font-size:0.72rem;" onclick="ejecutarBatch(${s.id_sede})">Exportar Parquet</button></td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+
+      const p = globalData.arquitectura.puertos_hexagonales;
+      document.getElementById('info-puertos').innerHTML = `
+        <div><strong style="color:var(--telemetry-cyan)">IParkingRepositoryPort:</strong> <span class="mono">${p.IParkingRepositoryPort}</span></div>
+        <div><strong style="color:var(--telemetry-cyan)">IEvidenceStoragePort:</strong> <span class="mono">${p.IEvidenceStoragePort}</span></div>
+        <div><strong style="color:var(--telemetry-cyan)">IAnalyticsLakePort:</strong> <span class="mono">${p.IAnalyticsLakePort}</span></div>
+      `;
+
+      document.getElementById('tabla-finops').innerHTML = `
+        <thead><tr><th>Servicio Cloud</th><th>SKU</th><th>24/7</th><th>Con Apagado</th></tr></thead>
+        <tbody>${globalData.finops.desglose_servicios.map(f => `
+          <tr>
+            <td style="font-size:0.74rem;">${f.servicio}</td>
+            <td class="mono" style="font-size:0.7rem;">${f.sku}</td>
+            <td class="mono">$${f.costo_mensual_24x7_usd}</td>
+            <td class="mono" style="color:var(--acid-emerald);font-weight:700;">$${f.costo_mensual_optimizado_usd}</td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+
+      document.getElementById('hm-horario-global').innerHTML = construirMatrizHeatmapHTML(globalData.heatmap_horario_global);
+
+      document.getElementById('tabla-parquet').innerHTML = `
+        <thead><tr><th>Fecha</th><th>Sede</th><th>Estancias</th><th>Ingresos Consolidados</th><th>URI Archivo Parquet</th></tr></thead>
+        <tbody>${globalData.cierres_parquet.map(c => `
+          <tr>
+            <td class="mono">${String(c.fecha_cierre).slice(0,10)}</td>
+            <td><strong>${c.nombre_sede}</strong></td>
+            <td class="mono">${c.total_estancias_procesadas}</td>
+            <td class="mono" style="color:var(--acid-emerald);font-weight:700;">${fmtCOP(c.ingresos_consolidados_cop)}</td>
+            <td class="mono" style="color:var(--telemetry-cyan);font-size:0.73rem;">${c.uri_archivo_parquet}</td>
+          </tr>
+        `).join('')}</tbody>
+      `;
+    }
+
+    async function switchProvider(modo) {
+      const res = await fetch(`${API_BASE}/arquitectura/switch-provider`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modo })
+      });
+      const data = await res.json();
+      mostrarAlerta(data.mensaje);
+      await cargarTodo();
+    }
+
+    async function ejecutarBatch(idSede) {
+      const res = await fetch(`${API_BASE}/datalake/cierre-batch`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_sede: idSede })
+      });
+      const data = await res.json();
+      mostrarAlerta(`Cierre Batch Parquet Snappy generado con placas anonimizadas (SHA-256): ${data.lake_export.uriParquet}`);
+      await cargarTodo();
+    }
+
+    function renderTodo() {
+      renderOperador();
+      renderAdminSede();
+      renderAdminGlobal();
+    }
+
+    cargarTodo();
+  </script>
+</body>
+</html>

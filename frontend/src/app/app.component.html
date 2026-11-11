@@ -1,0 +1,1547 @@
+<div class="parkcloud-shell">
+  <!-- TOPBAR SOBERANO DE IDENTIDAD Y CONMUTACIÓN DE ROL / SEDE -->
+  <header class="topbar">
+    <div class="brand-cluster">
+      <img
+        src="assets/logo-parkcloud.png"
+        alt="Logo ParkCloud Colombia"
+        width="48"
+        height="48"
+        style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover;"
+      />
+      <div>
+        <div class="brand-title">ParkCloud Colombia</div>
+        <div class="brand-subtitle">
+          Arquitectura Hexagonal ACID - 5 Sedes Bogotá D.C.
+          <span
+            *ngIf="dashboardGlobal?.arquitectura"
+            class="badge"
+            [ngClass]="dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'badge-cyan' : 'badge-emerald'"
+            style="margin-left: 6px;"
+          >
+            {{ dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'MODO CLOUD AZURE ACTIVO' : 'MODO LOCAL POSTGRESQL ACID' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SELECTOR DE SEDE ACTIVA -->
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; flex-direction: column;">
+        <label style="margin-bottom: 2px; font-size: 0.68rem;">Sede en Operación (Bogotá)</label>
+        <select
+          [ngModel]="idSedeSeleccionada"
+          (ngModelChange)="cargarSede($event)"
+          style="min-width: 245px; font-weight: 600;"
+        >
+          <option *ngFor="let s of dashboardGlobal?.sedes" [ngValue]="s.id_sede">
+            [{{ s.codigo_sede }}] {{ s.nombre }} ({{ s.ocupacion_porcentaje }}% ocup.)
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- PESTAÑAS DE VISTAS POR ROL + MODELO ER -->
+    <nav class="role-tabs">
+      <button
+        class="role-tab"
+        [class.active]="vistaActiva === 'OPERADOR_SEDE'"
+        (click)="cambiarVista('OPERADOR_SEDE')"
+      >
+        1. Recepcionista (Operación # Celda)
+      </button>
+      <button
+        class="role-tab"
+        [class.active]="vistaActiva === 'ADMIN_SEDE'"
+        (click)="cambiarVista('ADMIN_SEDE')"
+      >
+        2. Admin de Parqueadero (Sede)
+      </button>
+      <button
+        class="role-tab"
+        [class.active]="vistaActiva === 'ADMIN_GLOBAL'"
+        (click)="cambiarVista('ADMIN_GLOBAL')"
+      >
+        3. Admin Todos los Parqueaderos (Global)
+      </button>
+      <button
+        class="role-tab"
+        [class.active]="vistaActiva === 'MODELO_ER'"
+        (click)="cambiarVista('MODELO_ER')"
+      >
+        4. Diagrama ER ACID &amp; Marca
+      </button>
+    </nav>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="main-container">
+    <!-- ALERTAS TRANSACCIONALES ACID -->
+    <div
+      *ngIf="mensajeExito"
+      class="card"
+      style="margin-bottom: 16px; border-color: rgba(16, 185, 129, 0.55); background: rgba(16, 185, 129, 0.12); padding: 12px 18px;"
+    >
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #6ee7b7; font-weight: 600; font-size: 0.86rem;">
+          [ACID COMMIT OK] {{ mensajeExito }}
+        </span>
+        <button class="btn btn-outline" style="padding: 4px 10px;" (click)="mensajeExito = ''">Cerrar</button>
+      </div>
+    </div>
+
+    <div
+      *ngIf="mensajeError"
+      class="card"
+      style="margin-bottom: 16px; border-color: rgba(239, 68, 68, 0.55); background: rgba(239, 68, 68, 0.14); padding: 12px 18px;"
+    >
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #fca5a5; font-weight: 600; font-size: 0.86rem;">
+          [ACID ROLLBACK / ALERTA] {{ mensajeError }}
+        </span>
+        <button class="btn btn-outline" style="padding: 4px 10px;" (click)="mensajeError = ''">Cerrar</button>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 1: RECEPCIONISTA / OPERADOR DE PARQUEADERO (OPERADOR_SEDE)      -->
+    <!-- ===================================================================== -->
+    <section *ngIf="vistaActiva === 'OPERADOR_SEDE' && dashboardSede">
+      <!-- KPIs Rápidos de Recepción -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Sede Activa</div>
+          <div class="kpi-value" style="font-size: 1.25rem;">{{ dashboardSede.sede.nombre }}</div>
+          <div class="kpi-sub">{{ dashboardSede.sede.localidad }} - {{ dashboardSede.sede.direccion }}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Celdas Interactivas Operativas</div>
+          <div class="kpi-value">
+            <span style="color: var(--acid-emerald);">
+              {{ (dashboardSede.celdas_mapa_calor?.length || 40) - (dashboardSede.estancias_activas?.length || 0) }} Libres
+            </span>
+            /
+            <span style="color: var(--occupied-crimson);">{{ dashboardSede.estancias_activas?.length || 0 }} Ocup.</span>
+          </div>
+          <div class="kpi-sub">Capacidad autorizada sede: {{ dashboardSede.sede.capacidad_total }} cupos físicos</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Vehículos en Patio Ahora</div>
+          <div class="kpi-value mono">{{ dashboardSede.estancias_activas?.length || 0 }}</div>
+          <div class="kpi-sub">Con bloqueo de fila ACID (SELECT ... FOR UPDATE)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Recaudo Acumulado Sede</div>
+          <div class="kpi-value mono" style="color: var(--telemetry-cyan);">
+            {{ formatoCOP(dashboardSede.sede.recaudo_hoy_cop) }}
+          </div>
+          <div class="kpi-sub">IVA 19% discriminado + Trazabilidad inmutable</div>
+        </div>
+      </div>
+
+      <!-- Layout Principal: Grilla Interactiva de # Parqueadero (Izquierda) + Panel Check-In / Check-Out (Derecha) -->
+      <div class="split-layout">
+        <!-- COLUMNA IZQUIERDA: MAPA INTERACTIVO DE CELDAS (# DEL PARQUEADERO) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                Mapa de Celdas de la Sede - Selecciona el # del Parqueadero (A-01 a D-40)
+              </div>
+              <div class="card-subtitle">
+                Haz clic en una celda <strong>VERDE (Disponible)</strong> para registrar el ingreso de un vehículo, o en una celda
+                <strong>ROJA (Ocupada)</strong> para liquidar la salida y el pago.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button
+                class="btn"
+                [ngClass]="modoVisualizacionGrilla === 'OPERATIVO' ? 'btn-primary' : 'btn-outline'"
+                (click)="modoVisualizacionGrilla = 'OPERATIVO'"
+              >
+                Vista Operativa (Libre / Ocupado)
+              </button>
+              <button
+                class="btn"
+                [ngClass]="modoVisualizacionGrilla === 'MAPA_CALOR' ? 'btn-primary' : 'btn-outline'"
+                (click)="modoVisualizacionGrilla = 'MAPA_CALOR'"
+              >
+                Mapa de Calor Térmico
+              </button>
+            </div>
+          </div>
+
+          <!-- Leyenda rápida -->
+          <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; font-size: 0.76rem; color: var(--text-secondary);">
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <span style="width: 12px; height: 12px; border-radius: 3px; background: rgba(16, 185, 129, 0.5); border: 1px solid #10b981;"></span>
+              Disponible (Clic para Ingreso)
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <span style="width: 12px; height: 12px; border-radius: 3px; background: rgba(239, 68, 68, 0.55); border: 1px solid #ef4444;"></span>
+              Ocupado (Clic para Liquidar Salida)
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <span style="width: 12px; height: 12px; border-radius: 3px; border: 2px solid var(--telemetry-cyan);"></span>
+              Celda Seleccionada: <strong class="mono" style="color: var(--telemetry-cyan);">{{ celdaSeleccionada?.numero_celda || 'Ninguna' }}</strong>
+            </span>
+          </div>
+
+          <!-- GRILLA 8 COLUMNAS x 5 FILAS (40 CELDAS NUMERADAS) -->
+          <div class="parking-grid">
+            <div
+              *ngFor="let c of dashboardSede.celdas_mapa_calor"
+              class="bay-cell"
+              [class.available]="c.estado === 'DISPONIBLE' && modoVisualizacionGrilla === 'OPERATIVO'"
+              [class.occupied]="c.estado === 'OCUPADA' && modoVisualizacionGrilla === 'OPERATIVO'"
+              [class.selected]="celdaSeleccionada?.id_celda === c.id_celda"
+              [ngStyle]="obtenerEstiloCeldaParqueadero(c)"
+              (click)="seleccionarCelda(c)"
+            >
+              <div class="bay-header">
+                <span class="bay-number">#{{ c.numero_celda }}</span>
+                <span class="bay-type-tag">{{ c.tipo_vehiculo_permitido.slice(0, 4) }}</span>
+              </div>
+
+              <!-- Si está OCUPADA muestra la placa actual -->
+              <div *ngIf="c.estado === 'OCUPADA' && c.estancia_activa" class="bay-plate">
+                {{ c.estancia_activa.placa }}
+              </div>
+
+              <!-- Si está DISPONIBLE muestra estado libre -->
+              <div
+                *ngIf="c.estado === 'DISPONIBLE'"
+                style="font-size: 0.7rem; font-weight: 700; color: #6ee7b7; text-align: center; padding: 3px 0;"
+              >
+                LIBRE
+              </div>
+
+              <div class="bay-meta">
+                <span>Piso {{ c.piso }}</span>
+                <span *ngIf="modoVisualizacionGrilla === 'MAPA_CALOR'" class="mono">{{ c.intensidad_calor_pct }}% calor</span>
+                <span *ngIf="modoVisualizacionGrilla === 'OPERATIVO'" class="mono">{{ c.rotaciones_historicas }} rot.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: PANEL DINÁMICO DE TRANSACCIÓN SEGÚN LA CELDA SELECCIONADA -->
+        <div class="card">
+          <!-- CASO A: CELDA DISPONIBLE -> FORMULARIO DE REGISTRO DE ENTRADA (CHECK-IN) -->
+          <div *ngIf="celdaSeleccionada && celdaSeleccionada.estado === 'DISPONIBLE'">
+            <div class="card-header">
+              <div>
+                <span class="badge badge-emerald" style="margin-bottom: 6px;">CELDA DISPONIBLE PARA INGRESO</span>
+                <div class="card-title">
+                  Registrar Entrada en Parqueadero <span class="mono" style="color: var(--telemetry-cyan);">#{{ celdaSeleccionada.numero_celda }}</span>
+                </div>
+                <div class="card-subtitle">
+                  Zona: {{ celdaSeleccionada.nombre_zona }} | Tipo sugerido: {{ celdaSeleccionada.tipo_vehiculo_permitido }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Banner Cámara LPR / Talanquera IoT (En desarrollo próximamente + Demo OCR) -->
+            <div
+              style="background: rgba(0, 210, 255, 0.08); border: 1px dashed rgba(0, 210, 255, 0.45); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px;"
+            >
+              <div>
+                <div style="font-size: 0.76rem; font-weight: 700; color: var(--telemetry-cyan);">
+                  Cámara LPR / Talanquera IoT (En desarrollo próximamente - Sprint Cloud)
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">
+                  Puedes llenar manualmente los datos del cliente o simular lectura asistida OCR en 1 clic:
+                </div>
+              </div>
+              <button class="btn btn-outline" type="button" (click)="autocompletarDemoOCR()">
+                Autocompletar Demo
+              </button>
+            </div>
+
+            <!-- Formulario de Vehículo y Cliente -->
+            <div class="form-grid">
+              <div>
+                <label>Placa del Vehículo *</label>
+                <input
+                  type="text"
+                  [(ngModel)]="formIngreso.placa"
+                  placeholder="Ej. KLM842"
+                  maxlength="10"
+                  class="mono"
+                  style="text-transform: uppercase; font-weight: 700;"
+                />
+              </div>
+              <div>
+                <label>Tipo de Vehículo *</label>
+                <select [(ngModel)]="formIngreso.tipo_vehiculo">
+                  <option value="AUTOMOVIL">AUTOMÓVIL ($115/min)</option>
+                  <option value="CAMIONETA">CAMIONETA ($145/min)</option>
+                  <option value="MOTOCICLETA">MOTOCICLETA ($80/min)</option>
+                  <option value="ELECTRICO">ELÉCTRICO ($95/min)</option>
+                </select>
+              </div>
+              <div>
+                <label>Marca / Línea del Vehículo</label>
+                <input type="text" [(ngModel)]="formIngreso.marca" placeholder="Ej. Mazda 3 Touring" />
+              </div>
+              <div>
+                <label>Color</label>
+                <input type="text" [(ngModel)]="formIngreso.color" placeholder="Ej. Gris Titán" />
+              </div>
+              <div>
+                <label>Documento Cliente (CC / NIT) * (Máx. 1 cupo activo)</label>
+                <input type="text" [(ngModel)]="formIngreso.documento_cliente" placeholder="Ej. 1020754891" class="mono" />
+                <div
+                  *ngIf="obtenerEstanciaActivaPorDocumento(formIngreso.documento_cliente) as estActiva"
+                  style="margin-top: 5px; padding: 6px 8px; border-radius: 6px; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; font-size: 0.72rem; font-weight: 600;"
+                >
+                  Ya tienes un parqueadero alquilado con esta CC: Celda #{{ estActiva.numero_celda }} (Vehículo {{ estActiva.placa }}).
+                </div>
+              </div>
+              <div>
+                <label>Nombre Completo del Cliente *</label>
+                <input type="text" [(ngModel)]="formIngreso.nombre_cliente" placeholder="Ej. Andrés Felipe Castellanos" />
+              </div>
+              <div>
+                <label>Teléfono Contacto</label>
+                <input type="text" [(ngModel)]="formIngreso.telefono_cliente" placeholder="Ej. 3104589210" class="mono" />
+              </div>
+              <div>
+                <label>Modalidad / Tarifa</label>
+                <select [(ngModel)]="formIngreso.modalidad_tarifa">
+                  <option value="ROTATIVO">ROTATIVO POR MINUTO</option>
+                  <option value="CONVENIO_CORPORATIVO">CONVENIO CORPORATIVO</option>
+                  <option value="MENSUALIDAD">MENSUALIDAD ACTIVA</option>
+                </select>
+              </div>
+              <div class="full-width" *ngIf="formIngreso.modalidad_tarifa === 'CONVENIO_CORPORATIVO'">
+                <label>Convenio Empresarial Asociado</label>
+                <select [(ngModel)]="formIngreso.id_convenio">
+                  <option [ngValue]="1">Bancolombia Dirección General (25% Dcto.)</option>
+                  <option [ngValue]="2">Clínica del Country / Colsanitas (30% Dcto.)</option>
+                  <option [ngValue]="3">Cámara de Comercio de Bogotá (20% Dcto.)</option>
+                  <option [ngValue]="4">Globant &amp; Hub Tecnológico Calle 100 (15% Dcto.)</option>
+                  <option [ngValue]="5">Gobernación de Cundinamarca (50% Dcto.)</option>
+                </select>
+              </div>
+            </div>
+
+            <div
+              style="margin-top: 12px; padding: 10px; border-radius: 8px; background: rgba(11, 19, 43, 0.65); font-size: 0.73rem; color: var(--text-secondary);"
+            >
+              <strong>Garantía ACID y Ley 1581:</strong> Al guardar, se ejecuta <code>fn_registrar_ingreso_acido()</code> con bloqueo
+              pesimista <code>FOR UPDATE</code> sobre la celda <strong>#{{ celdaSeleccionada.numero_celda }}</strong>, se almacena la hora
+              exacta del servidor y se genera el hash irreversible <code>SHA-256 + Salt</code> de la placa.
+            </div>
+
+            <button
+              class="btn btn-emerald"
+              style="width: 100%; margin-top: 14px; justify-content: center; padding: 12px;"
+              (click)="ejecutarIngresoACID()"
+            >
+              Guardar Hora de Entrada y Ocupar Parqueadero #{{ celdaSeleccionada.numero_celda }}
+            </button>
+          </div>
+
+          <!-- CASO B: CELDA OCUPADA -> PANEL DE LIQUIDACIÓN DE COSTO Y SALIDA (CHECK-OUT) -->
+          <div *ngIf="celdaSeleccionada && celdaSeleccionada.estado === 'OCUPADA'">
+            <div class="card-header">
+              <div>
+                <span class="badge badge-crimson" style="margin-bottom: 6px;">PARQUEADERO OCUPADO - LIQUIDAR SALIDA</span>
+                <div class="card-title">
+                  Salida y Cobro de Celda <span class="mono" style="color: #fca5a5;">#{{ celdaSeleccionada.numero_celda }}</span>
+                </div>
+                <div class="card-subtitle">
+                  Puedes consultar o recalcular el pago sin dar salida (el tiempo sigue corriendo), o agregar el pago para liberar la celda.
+                </div>
+              </div>
+            </div>
+
+            <!-- Cronómetro en Vivo (Siempre visible mientras la celda siga OCUPADA) -->
+            <div
+              style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;"
+            >
+              <div>
+                <div style="font-size: 0.72rem; text-transform: uppercase; color: #fbbf24; font-weight: 700;">
+                  Cronómetro de Permanencia en Vivo (Sin Salida Aún)
+                </div>
+                <div class="mono" style="font-size: 1.15rem; font-weight: 800; color: #fde68a;">
+                  {{ tiempoCorriendoTexto }} ({{ preliquidacionActual?.minutos_transcurridos || 1 }} min cobrables)
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-primary" type="button" (click)="recalcularPagoSinDarSalida()">
+                  Calcular / Actualizar Pago
+                </button>
+                <button
+                  *ngIf="calculoPagoAbierto"
+                  class="btn btn-outline"
+                  type="button"
+                  (click)="salirDelCalculoSinPagar()"
+                >
+                  Salir sin Pagar
+                </button>
+              </div>
+            </div>
+
+            <!-- Estado cuando el recepcionista salió del cálculo sin agregar pago -->
+            <div
+              *ngIf="!calculoPagoAbierto"
+              style="background: rgba(11, 19, 43, 0.85); border: 1px dashed rgba(0, 210, 255, 0.45); border-radius: 10px; padding: 16px; text-align: center;"
+            >
+              <div style="font-weight: 700; color: var(--telemetry-cyan); margin-bottom: 6px;">
+                Cálculo en Pausa - El Vehículo Continúa en el Parqueadero #{{ celdaSeleccionada.numero_celda }}
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">
+                No se ha registrado ningún pago ni se ha desmarcado la celda. El tiempo de permanencia ({{ tiempoCorriendoTexto }}) sigue corriendo en tiempo real.
+              </div>
+              <button class="btn btn-primary" style="justify-content: center;" (click)="recalcularPagoSinDarSalida()">
+                Volver a Calcular Pago y Mostrar Opciones de Salida
+              </button>
+            </div>
+
+            <!-- Recuadro Completo de Cálculo de Pago, Método de Pago y Salida -->
+            <div *ngIf="preliquidacionActual && calculoPagoAbierto" style="display: flex; flex-direction: column; gap: 12px;">
+              <!-- Resumen del Vehículo y Cliente -->
+              <div
+                style="background: rgba(11, 19, 43, 0.8); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px;"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span class="mono" style="font-size: 1.3rem; font-weight: 800; color: #fca5a5; letter-spacing: 0.08em;">
+                    PLACA: {{ preliquidacionActual.placa }}
+                  </span>
+                  <span class="badge badge-cyan mono">{{ preliquidacionActual.codigo_tique }}</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                  <div><strong>Cliente:</strong> {{ preliquidacionActual.nombre_cliente }}</div>
+                  <div><strong>Tipo:</strong> {{ preliquidacionActual.tipo_vehiculo }}</div>
+                  <div><strong>Hora Entrada:</strong> {{ preliquidacionActual.timestamp_entrada | date:'shortTime' }}</div>
+                  <div><strong>Modalidad:</strong> {{ preliquidacionActual.modalidad_tarifa }}</div>
+                </div>
+              </div>
+
+              <!-- Desglose Financiero Pre-liquidado en Tiempo Real -->
+              <div
+                style="background: rgba(22, 36, 71, 0.9); border: 1px solid rgba(0, 210, 255, 0.35); border-radius: 10px; padding: 14px;"
+              >
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--telemetry-cyan); font-weight: 700; margin-bottom: 8px;">
+                  Cálculo Automático de Costo a Pagar (fn_preliquidar_estancia)
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 0.84rem; padding: 4px 0;">
+                  <span style="color: var(--text-secondary);">Tiempo Transcurrido (En vivo):</span>
+                  <strong class="mono">{{ preliquidacionActual.minutos_transcurridos }} min ({{ tiempoCorriendoTexto }})</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.84rem; padding: 4px 0;">
+                  <span style="color: var(--text-secondary);">Tarifa Aplicada ({{ formatoCOP(preliquidacionActual.valor_minuto_aplicado_cop) }}/min):</span>
+                  <span class="mono">{{ formatoCOP(preliquidacionActual.valor_bruto_cop) }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.84rem; padding: 4px 0;">
+                  <span style="color: var(--text-secondary);">Descuento Convenio / Mensualidad:</span>
+                  <span class="mono" style="color: var(--acid-emerald);">- {{ formatoCOP(preliquidacionActual.valor_descuento_cop) }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.84rem; padding: 4px 0;">
+                  <span style="color: var(--text-secondary);">IVA Discriminado (19%):</span>
+                  <span class="mono">{{ formatoCOP(preliquidacionActual.valor_iva_cop) }}</span>
+                </div>
+                <hr style="border: none; border-top: 1px solid var(--border-subtle); margin: 8px 0;" />
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-weight: 700; font-size: 0.95rem;">TOTAL A PAGAR:</span>
+                  <span class="mono" style="font-size: 1.45rem; font-weight: 800; color: var(--acid-emerald);">
+                    {{ formatoCOP(preliquidacionActual.valor_neto_pagar_cop) }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- PASO 1: Botón para Abrir el Formulario de Agregar Pago (o Salir sin Pagar) -->
+              <div *ngIf="!mostrarFormularioAgregarPago" style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px;">
+                <button
+                  class="btn btn-outline"
+                  type="button"
+                  style="justify-content: center; padding: 12px;"
+                  (click)="salirDelCalculoSinPagar()"
+                >
+                  Salir sin Agregar Pago (Sigue Corriendo)
+                </button>
+                <button
+                  class="btn btn-emerald"
+                  type="button"
+                  style="justify-content: center; padding: 12px;"
+                  (click)="abrirModalAgregarPago()"
+                >
+                  Agregar Pago (Elegir Medio de Pago)
+                </button>
+              </div>
+
+              <!-- PASO 2: Recuadro Interactivo de Agregar Pago (Efectivo con Vueltas COP / Nequi con Foto y Referencia) -->
+              <div
+                *ngIf="mostrarFormularioAgregarPago"
+                style="background: rgba(11, 19, 43, 0.92); border: 1.5px solid var(--telemetry-cyan); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px;"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.82rem; font-weight: 700; color: var(--telemetry-cyan); text-transform: uppercase;">
+                    1. Selecciona el Medio de Pago del Cliente *
+                  </span>
+                  <button
+                    class="btn btn-outline"
+                    type="button"
+                    style="padding: 3px 8px; font-size: 0.7rem;"
+                    (click)="mostrarFormularioAgregarPago = false; detenerCamaraComprobante()"
+                  >
+                    Cerrar Pago (Sigue Corriendo)
+                  </button>
+                </div>
+
+                <select [(ngModel)]="metodoPagoSeleccionado" style="font-weight: 700;">
+                  <option value="EFECTIVO">EFECTIVO EN CAJA (PESOS COLOMBIANOS - COP)</option>
+                  <option value="PSE_NEQUI_DAVIPLATA">NEQUI / DAVIPLATA / TRANSFERENCIA QR</option>
+                  <option value="TARJETA_DEBITO_CREDITO">TARJETA DÉBITO / CRÉDITO (DATÁFONO)</option>
+                  <option value="CARGO_CONVENIO">CARGO A CONVENIO EMPRESARIAL</option>
+                </select>
+
+                <!-- =============================================================== -->
+                <!-- SUB-SECCIÓN A: PAGO EN EFECTIVO (VUELTAS Y 3 COMBINACIONES COP) -->
+                <!-- =============================================================== -->
+                <div
+                  *ngIf="metodoPagoSeleccionado === 'EFECTIVO'"
+                  style="background: rgba(22, 36, 71, 0.85); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 12px;"
+                >
+                  <label>¿Con cuánto te paga el cliente en efectivo? (COP) *</label>
+                  <input
+                    type="number"
+                    [(ngModel)]="efectivoRecibidoCOP"
+                    step="100"
+                    min="0"
+                    class="mono"
+                    style="font-size: 1.05rem; font-weight: 700; margin-bottom: 8px;"
+                    placeholder="Ej. 100000"
+                  />
+
+                  <!-- Botones rápidos de billetes colombianos -->
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                    <button
+                      type="button"
+                      class="btn btn-outline"
+                      style="padding: 4px 8px; font-size: 0.72rem;"
+                      (click)="fijarBilleteEfectivo(preliquidacionActual.valor_neto_pagar_cop)"
+                    >
+                      Exacto ({{ formatoCOP(preliquidacionActual.valor_neto_pagar_cop) }})
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.72rem;" (click)="fijarBilleteEfectivo(5000)">
+                      $5.000
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.72rem;" (click)="fijarBilleteEfectivo(10000)">
+                      $10.000
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.72rem;" (click)="fijarBilleteEfectivo(20000)">
+                      $20.000
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.72rem;" (click)="fijarBilleteEfectivo(50000)">
+                      $50.000
+                    </button>
+                    <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.72rem;" (click)="fijarBilleteEfectivo(100000)">
+                      $100.000
+                    </button>
+                  </div>
+
+                  <!-- Alerta si el efectivo es insuficiente -->
+                  <div
+                    *ngIf="efectivoInsuficiente()"
+                    style="padding: 8px; border-radius: 6px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.78rem; font-weight: 600;"
+                  >
+                    El monto recibido ({{ formatoCOP(efectivoRecibidoCOP) }}) es menor al total a cobrar ({{ formatoCOP(preliquidacionActual.valor_neto_pagar_cop) }}).
+                  </div>
+
+                  <!-- Resultado de Vueltas y 3 Combinaciones Sugeridas de Billetes y Monedas Colombianas -->
+                  <div *ngIf="!efectivoInsuficiente()">
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: center; background: rgba(11, 19, 43, 0.9); padding: 10px 12px; border-radius: 8px; margin-bottom: 10px;"
+                    >
+                      <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-secondary);">
+                        Vueltas a Devolver (Cambio):
+                      </span>
+                      <span class="mono" style="font-size: 1.3rem; font-weight: 800; color: #6ee7b7;">
+                        {{ formatoCOP(obtenerVueltasCOP()) }}
+                      </span>
+                    </div>
+
+                    <div *ngIf="obtenerVueltasCOP() > 0">
+                      <div style="font-size: 0.74rem; font-weight: 700; color: var(--telemetry-cyan); margin-bottom: 6px;">
+                        3 Combinaciones Sugeridas de Billetes y Monedas Colombianas (COP):
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div
+                          *ngFor="let comb of obtener3CombinacionesVueltasCOP()"
+                          style="background: rgba(11, 19, 43, 0.78); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px;"
+                        >
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                            <strong style="font-size: 0.74rem; color: #fde68a;">{{ comb.titulo }}</strong>
+                            <span class="badge badge-cyan mono">{{ comb.piezas }} piezas</span>
+                          </div>
+                          <div class="mono" style="font-size: 0.75rem; color: #f8fafc;">
+                            {{ comb.detalle }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- =============================================================== -->
+                <!-- SUB-SECCIÓN B: PAGO POR NEQUI / TRANSFERENCIA (FOTO + REF)      -->
+                <!-- =============================================================== -->
+                <div
+                  *ngIf="metodoPagoSeleccionado === 'PSE_NEQUI_DAVIPLATA'"
+                  style="background: rgba(22, 36, 71, 0.85); border: 1px solid rgba(0, 210, 255, 0.45); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px;"
+                >
+                  <div>
+                    <label>Referencia de Pago Nequi / Transferencia Bancaria *</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="referenciaPagoTransferencia"
+                      placeholder="Ej. M28491024 o NEQ-948201"
+                      class="mono"
+                      style="font-weight: 700;"
+                    />
+                  </div>
+
+                  <div>
+                    <label>Evidencia Fotográfica del Comprobante Nequi / Transferencia *</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+                      <button type="button" class="btn btn-primary" style="font-size: 0.74rem; padding: 6px 10px;" (click)="activarCamaraComprobante()">
+                        Tomar Foto con Cámara Web
+                      </button>
+                      <label
+                        class="btn btn-outline"
+                        style="font-size: 0.74rem; padding: 6px 10px; margin: 0; cursor: pointer;"
+                      >
+                        Subir Foto de Archivo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          style="display: none;"
+                          (change)="alSeleccionarFotoArchivo($event)"
+                        />
+                      </label>
+                      <button type="button" class="btn btn-outline" style="font-size: 0.74rem; padding: 6px 10px;" (click)="generarComprobanteNequiDemo()">
+                        Generar Captura Nequi (Demo)
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Visor en vivo de cámara web si se activó -->
+                  <div *ngIf="camaraActiva" style="text-align: center; background: #000; padding: 8px; border-radius: 8px;">
+                    <video
+                      id="video-comprobante-nequi"
+                      autoplay
+                      playsinline
+                      style="width: 100%; max-height: 200px; border-radius: 6px;"
+                    ></video>
+                    <div style="display: flex; justify-content: center; gap: 8px; margin-top: 8px;">
+                      <button type="button" class="btn btn-emerald" (click)="capturarFotoDeCamara()">
+                        Capturar Foto Ahora
+                      </button>
+                      <button type="button" class="btn btn-outline" (click)="detenerCamaraComprobante()">
+                        Cancelar Cámara
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Vista previa de la foto tomada o adjuntada -->
+                  <div *ngIf="fotoComprobanteDataUrl" style="background: rgba(11, 19, 43, 0.9); padding: 8px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.72rem; color: #6ee7b7; font-weight: 700; margin-bottom: 6px;">
+                      Foto del Comprobante Lista para Respaldo ACID (Ref: {{ referenciaPagoTransferencia || 'Pendiente' }})
+                    </div>
+                    <img
+                      [src]="fotoComprobanteDataUrl"
+                      alt="Foto Comprobante Nequi"
+                      style="max-width: 100%; max-height: 170px; border-radius: 6px; border: 1px solid var(--telemetry-cyan);"
+                    />
+                  </div>
+                </div>
+
+                <!-- Botones Finales dentro del Formulario de Pago -->
+                <div style="display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-top: 4px;">
+                  <button
+                    class="btn btn-outline"
+                    type="button"
+                    style="justify-content: center; padding: 12px;"
+                    (click)="salirDelCalculoSinPagar()"
+                  >
+                    Salir sin Pagar (Sigue Corriendo)
+                  </button>
+                  <button
+                    class="btn btn-danger"
+                    type="button"
+                    style="justify-content: center; padding: 12px;"
+                    (click)="ejecutarSalidaACID()"
+                  >
+                    Confirmar Pago y Dar Salida (#{{ celdaSeleccionada.numero_celda }})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recibo Emitido Tras Liquidar Salida -->
+          <div
+            *ngIf="ultimoReciboEmitido"
+            style="margin-top: 14px; padding: 14px; border-radius: 10px; background: rgba(16, 185, 129, 0.14); border: 1px solid #10b981;"
+          >
+            <div style="font-weight: 800; color: #6ee7b7; font-size: 0.88rem; margin-bottom: 6px;">
+              COMPROBANTE FISCAL EMITIDO: {{ ultimoReciboEmitido.numero_comprobante_emitido }}
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-primary); display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+              <div><strong>Celda Liberada:</strong> #{{ ultimoReciboEmitido.numero_celda_liberada }}</div>
+              <div><strong>Permanencia:</strong> {{ ultimoReciboEmitido.minutos_liquidados }} min</div>
+              <div><strong>Medio Pago:</strong> {{ ultimoReciboEmitido.metodo_pago_registrado }}</div>
+              <div><strong>Total Pagado:</strong> {{ formatoCOP(ultimoReciboEmitido.total_pagado_cop) }}</div>
+              <div *ngIf="ultimoReciboEmitido.efectivo_recibido_cop !== null">
+                <strong>Efectivo Recibido:</strong> {{ formatoCOP(ultimoReciboEmitido.efectivo_recibido_cop) }}
+              </div>
+              <div *ngIf="ultimoReciboEmitido.efectivo_recibido_cop !== null">
+                <strong>Vueltas Entregadas:</strong> {{ formatoCOP(ultimoReciboEmitido.vueltas_cop) }}
+              </div>
+              <div *ngIf="ultimoReciboEmitido.referencia_transferencia" style="grid-column: 1 / -1;">
+                <strong>Referencia Nequi / Transferencia:</strong> <span class="mono">{{ ultimoReciboEmitido.referencia_transferencia }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLA INFERIOR DE ESTANCIAS ACTIVAS Y FACTURAS RECIENTES EN LA SEDE -->
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; margin-top: 18px;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Vehículos Actualmente Estacionados en {{ dashboardSede.sede.nombre }}</div>
+              <div class="card-subtitle">Haz clic en cualquier fila para seleccionar la celda y liquidar su salida</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th># Celda</th>
+                  <th>Placa</th>
+                  <th>Cliente</th>
+                  <th>Hora Entrada</th>
+                  <th>Minutos</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let est of dashboardSede.estancias_activas">
+                  <td><span class="badge badge-crimson mono">#{{ est.numero_celda }}</span></td>
+                  <td class="mono" style="font-weight: 700;">{{ est.placa }}</td>
+                  <td>
+                    <div style="font-weight: 600;">{{ est.nombre_cliente }}</div>
+                    <div class="mono" style="font-size: 0.68rem; color: var(--text-muted);">CC: {{ est.documento_cliente }}</div>
+                  </td>
+                  <td class="mono">{{ est.timestamp_entrada | date:'shortTime' }}</td>
+                  <td class="mono" style="color: #fde68a; font-weight: 600;">
+                    {{ est.reloj_vivo || (est.minutos_actuales + ' min') }}
+                  </td>
+                  <td>
+                    <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.74rem;" (click)="seleccionarEstanciaDeTablaParaSalida(est)">
+                      Calcular Pago / Salida
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Últimas Salidas y Pagos Liquidados (ACID)</div>
+              <div class="card-subtitle">Comprobantes inmutables asentados en PostgreSQL</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Factura</th>
+                  <th>Placa</th>
+                  <th>Medio Pago</th>
+                  <th>Total COP</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let p of dashboardSede.pagos_recientes?.slice(0, 7)">
+                  <td class="mono">{{ p.numero_comprobante }}</td>
+                  <td class="mono" style="font-weight: 700;">{{ p.placa }}</td>
+                  <td><span class="badge badge-cyan">{{ p.metodo_pago }}</span></td>
+                  <td class="mono" style="color: var(--acid-emerald); font-weight: 700;">
+                    {{ formatoCOP(p.total_pagado_cop) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 2: ADMINISTRADOR DE PARQUEADERO LOCAL (ADMIN_SEDE)              -->
+    <!-- ===================================================================== -->
+    <section *ngIf="vistaActiva === 'ADMIN_SEDE' && dashboardSede">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Sede Administrada</div>
+          <div class="kpi-value" style="font-size: 1.25rem;">{{ dashboardSede.sede.nombre }}</div>
+          <div class="kpi-sub">Código: {{ dashboardSede.sede.codigo_sede }} | Horario {{ dashboardSede.sede.horario_operacion }}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ocupación Física Actual</div>
+          <div class="kpi-value mono" style="color: var(--thermal-amber);">
+            {{ dashboardSede.sede.ocupacion_porcentaje }}%
+          </div>
+          <div class="kpi-sub">
+            {{ dashboardSede.sede.capacidad_total - dashboardSede.sede.cupos_disponibles }} ocupados de {{ dashboardSede.sede.capacidad_total }} cupos
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Recaudo Histórico Sede</div>
+          <div class="kpi-value mono" style="color: var(--acid-emerald);">
+            {{ formatoCOP(dashboardSede.sede.recaudo_hoy_cop) }}
+          </div>
+          <div class="kpi-sub">{{ dashboardSede.sede.estancias_finalizadas }} estancias cerradas sin descuadres</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Bóveda LPR Ley 1581</div>
+          <div class="kpi-value mono" style="color: var(--telemetry-cyan);">
+            {{ dashboardSede.evidencias_lpr?.length || 0 }} Evidencias
+          </div>
+          <div class="kpi-sub">Ciclo Hot (30d) - Cool (90d) - Archive (365d)</div>
+        </div>
+      </div>
+
+      <!-- FILA 1: MAPA DE CALOR ESPACIAL DE CELDAS + MAPA DE CALOR HORARIO DE LA SEDE -->
+      <div style="display: grid; grid-template-columns: 1fr 1.15fr; gap: 18px; margin-bottom: 18px;">
+        <!-- Mapa de Calor Espacial de las 40 Celdas -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mapa de Calor Espacial por Celda (# Parqueadero)</div>
+              <div class="card-subtitle">
+                Densidad térmica calculada según rotaciones históricas y minutos acumulados de ocupación por bahía.
+              </div>
+            </div>
+            <span class="badge badge-amber">ROTACIÓN ESPACIAL</span>
+          </div>
+
+          <div class="parking-grid" style="grid-template-columns: repeat(8, 1fr); gap: 6px;">
+            <div
+              *ngFor="let c of dashboardSede.celdas_mapa_calor"
+              class="bay-cell"
+              [ngStyle]="obtenerEstiloCeldaParqueadero(c)"
+              style="min-height: 64px; padding: 6px;"
+            >
+              <div class="bay-header">
+                <span class="bay-number" style="font-size: 0.74rem;">#{{ c.numero_celda }}</span>
+                <span class="mono" style="font-size: 0.65rem; font-weight: 700;">{{ c.intensidad_calor_pct }}%</span>
+              </div>
+              <div style="font-size: 0.66rem; color: #f8fafc; font-weight: 600;">
+                {{ c.rotaciones_historicas }} rot.
+              </div>
+              <div style="font-size: 0.6rem; color: #cbd5e1;" class="mono">
+                {{ c.minutos_ocupacion_acumulados }}m
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mapa de Calor Horario 7 Días x 18 Horas de la Sede -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Mapa de Calor Temporal de Demanda ({{ dashboardSede.sede.nombre }})</div>
+              <div class="card-subtitle">
+                Matriz 7 días x 18 horas (05:00 a 22:00) para dimensionar turnos de recepcionistas y horas pico.
+              </div>
+            </div>
+            <span class="badge badge-cyan">DEMANDA 7x18</span>
+          </div>
+
+          <div class="heatmap-matrix">
+            <div></div>
+            <div *ngFor="let h of horasOperacion" class="hm-hour-header">{{ h }}h</div>
+
+            <ng-container *ngFor="let nombreDia of diasSemana; let idxDia = index">
+              <div class="hm-day-label">{{ nombreDia }}</div>
+              <div
+                *ngFor="let h of horasOperacion"
+                class="hm-cell"
+                [style.background]="obtenerColorHeatmapHorario(obtenerCeldaHeatmapHorario(dashboardSede.heatmap_horario, idxDia + 1, h).intensidad_pct)"
+                [title]="nombreDia + ' ' + h + ':00 -> ' + obtenerCeldaHeatmapHorario(dashboardSede.heatmap_horario, idxDia + 1, h).cantidad_vehiculos + ' vehículos'"
+              >
+                {{ obtenerCeldaHeatmapHorario(dashboardSede.heatmap_horario, idxDia + 1, h).cantidad_vehiculos }}
+              </div>
+            </ng-container>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.72rem; color: var(--text-secondary);">
+            <span>Valle (&lt;25%): Azul Profundo</span>
+            <span>Moderado (25-44%): Cian</span>
+            <span>Medio (45-63%): Esmeralda</span>
+            <span>Alto (64-81%): Ámbar</span>
+            <span>Hora Pico (&gt;82%): Rojo Crítico</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 2: GESTIÓN DE TARIFAS DE LA SEDE + BÓVEDA DE EVIDENCIAS LPR LEY 1581 -->
+      <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px;">
+        <!-- Editor de Tarifas Vigentes -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Parametrización de Tarifas por Tipo de Vehículo</div>
+              <div class="card-subtitle">Actualización transaccional inmediata para liquidaciones en recepción</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo Vehículo</th>
+                  <th>$/Minuto (COP)</th>
+                  <th>Plena Día (COP)</th>
+                  <th>Mensualidad</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let t of dashboardSede.tarifas">
+                  <td style="font-weight: 700;">{{ t.tipo_vehiculo }}</td>
+                  <td>
+                    <input type="number" [(ngModel)]="t.valor_minuto_cop" class="mono" style="width: 90px; padding: 5px;" />
+                  </td>
+                  <td>
+                    <input type="number" [(ngModel)]="t.tarifa_plena_dia_cop" class="mono" style="width: 105px; padding: 5px;" />
+                  </td>
+                  <td>
+                    <input type="number" [(ngModel)]="t.valor_mensualidad_cop" class="mono" style="width: 115px; padding: 5px;" />
+                  </td>
+                  <td>
+                    <button class="btn btn-primary" style="padding: 5px 10px; font-size: 0.73rem;" (click)="guardarTarifa(t)">
+                      Guardar
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Bóveda de Evidencias Fotográficas LPR con Auditoría Ley 1581 -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Bóveda de Evidencias LPR y Cumplimiento Ley 1581 de 2012</div>
+              <div class="card-subtitle">
+                Las fotografías son privadas y requieren registrar un tique de soporte antes de su inspección visual.
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal / Formulario de desbloqueo justificado -->
+          <div
+            *ngIf="evidenciaSeleccionadaAudit"
+            style="background: rgba(11, 19, 43, 0.9); border: 1px solid var(--telemetry-cyan); border-radius: 10px; padding: 12px; margin-bottom: 12px;"
+          >
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--telemetry-cyan); margin-bottom: 8px;">
+              Registro Obligatorio de Auditoría (Tabla: auditoria_evidencias) - Evidencia #{{ evidenciaSeleccionadaAudit.id_evidencia }}
+            </div>
+            <div class="form-grid">
+              <div>
+                <label>Código Tique Soporte *</label>
+                <input type="text" [(ngModel)]="formAuditoria.codigo_tique_soporte" class="mono" />
+              </div>
+              <div>
+                <label>Motivo Legal de Inspección (Ley 1581) *</label>
+                <input type="text" [(ngModel)]="formAuditoria.motivo_inspeccion" />
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button class="btn btn-emerald" (click)="confirmarAuditoriaLey1581()">
+                Registrar Auditoría y Desbloquear URI Blob
+              </button>
+              <button class="btn btn-outline" (click)="evidenciaSeleccionadaAudit = null">Cancelar</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Placa / Hash SHA-256</th>
+                  <th>Tier Blob</th>
+                  <th>URI Almacenamiento Objeto</th>
+                  <th>Auditorías</th>
+                  <th>Inspección</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let ev of dashboardSede.evidencias_lpr">
+                  <td>
+                    <div class="mono" style="font-weight: 700;">{{ ev.placa }}</div>
+                    <div class="mono" style="font-size: 0.65rem; color: var(--text-muted);" title="Hash SHA-256 + Salt">
+                      {{ ev.placa_hash_sha256?.slice(0, 18) }}...
+                    </div>
+                  </td>
+                  <td>
+                    <span
+                      class="badge"
+                      [ngClass]="ev.tier_almacenamiento === 'HOT' ? 'badge-emerald' : ev.tier_almacenamiento === 'COOL' ? 'badge-cyan' : 'badge-amber'"
+                    >
+                      {{ ev.tier_almacenamiento }} ({{ ev.dias_antiguedad }}d)
+                    </span>
+                  </td>
+                  <td class="mono" style="font-size: 0.72rem;">
+                    <span *ngIf="evidenciaDesbloqueadaId === ev.id_evidencia" style="color: #6ee7b7;">
+                      {{ ev.uri_blob }} [DESBLOQUEADA]
+                    </span>
+                    <span *ngIf="evidenciaDesbloqueadaId !== ev.id_evidencia" style="color: var(--text-muted);">
+                      🔒 Protegida por Ley 1581 ({{ ev.proveedor_storage }})
+                    </span>
+                  </td>
+                  <td class="mono">{{ ev.total_auditorias }}</td>
+                  <td>
+                    <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.72rem;" (click)="abrirAuditoriaEvidencia(ev)">
+                      Auditar / Ver
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 3: ADMINISTRADOR DE TODOS LOS PARQUEADEROS (ADMIN_GLOBAL)       -->
+    <!-- ===================================================================== -->
+    <section *ngIf="vistaActiva === 'ADMIN_GLOBAL' && dashboardGlobal">
+      <!-- KPIs Consolidados de las 5 Sedes Bogotá -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Red Operativa Bogotá D.C.</div>
+          <div class="kpi-value mono">{{ dashboardGlobal.kpis_globales.total_sedes }} Sedes</div>
+          <div class="kpi-sub">Capacidad instalada: {{ dashboardGlobal.kpis_globales.capacidad_red_total }} cupos totales</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ocupación Consolidada Red</div>
+          <div class="kpi-value mono" style="color: var(--telemetry-cyan);">
+            {{ dashboardGlobal.kpis_globales.ocupacion_red_porcentaje }}%
+          </div>
+          <div class="kpi-sub">
+            {{ dashboardGlobal.kpis_globales.cupos_ocupados_red }} ocupados / {{ dashboardGlobal.kpis_globales.cupos_disponibles_red }} disponibles
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ingresos Consolidados Red</div>
+          <div class="kpi-value mono" style="color: var(--acid-emerald);">
+            {{ formatoCOP(dashboardGlobal.kpis_globales.recaudo_total_red_cop) }}
+          </div>
+          <div class="kpi-sub">Transacciones 100% ACID sin pérdidas de recaudo</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Presupuesto FinOps Azure</div>
+          <div class="kpi-value mono" style="color: var(--thermal-amber);">
+            ${{ dashboardGlobal.finops.costo_optimizado_apagado_programado_usd_mes }} USD/mes
+          </div>
+          <div class="kpi-sub">
+            Ahorro del 60.1% vs ${{ dashboardGlobal.finops.costo_total_24x7_usd_mes }} USD On-Demand (11.7 meses con crédito $100)
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 1: TABLA COMPARATIVA DE LAS 5 SEDES + CONMUTADOR HEXAGONAL LOCAL <-> AZURE -->
+      <div style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; margin-bottom: 18px;">
+        <!-- Desempeño en Vivo por Sede -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Estado Consolidado de las 5 Sedes en Bogotá D.C.</div>
+              <div class="card-subtitle">Monitoreo multi-sede en tiempo real y disparo de cierres analíticos Parquet</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sede</th>
+                  <th>Localidad</th>
+                  <th>Ocupación</th>
+                  <th>Recaudo Acumulado</th>
+                  <th>Cierre Data Lake</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let s of dashboardGlobal.sedes">
+                  <td>
+                    <div style="font-weight: 700;">{{ s.nombre }}</div>
+                    <div class="mono" style="font-size: 0.7rem; color: var(--text-muted);">{{ s.codigo_sede }}</div>
+                  </td>
+                  <td>{{ s.localidad }}</td>
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="badge" [ngClass]="s.ocupacion_porcentaje >= 35 ? 'badge-amber' : 'badge-emerald'">
+                        {{ s.ocupacion_porcentaje }}%
+                      </span>
+                      <span class="mono" style="font-size: 0.74rem; color: var(--text-secondary);">
+                        {{ s.estancias_activas }} act.
+                      </span>
+                    </div>
+                  </td>
+                  <td class="mono" style="font-weight: 700; color: var(--acid-emerald);">
+                    {{ formatoCOP(s.recaudo_hoy_cop) }}
+                  </td>
+                  <td>
+                    <button
+                      class="btn btn-outline"
+                      style="padding: 4px 10px; font-size: 0.72rem;"
+                      (click)="dispararCierreBatchParquet(s.id_sede)"
+                    >
+                      Exportar Parquet
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Conmutador de Arquitectura Hexagonal (Ports & Adapters) + FinOps -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Conmutador en Caliente: Arquitectura Hexagonal (Ports &amp; Adapters)</div>
+              <div class="card-subtitle">
+                Permite migrar en 1 semana de entorno Local a Microsoft Azure cambiando únicamente los adaptadores de salida.
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+            <button
+              class="btn"
+              style="flex: 1; justify-content: center;"
+              [ngClass]="dashboardGlobal.arquitectura.modo_activo === 'LOCAL' ? 'btn-emerald' : 'btn-outline'"
+              (click)="conmutarAdaptadorCloud('LOCAL')"
+            >
+              Activar Adaptadores LOCAL (PostgreSQL + Disco)
+            </button>
+            <button
+              class="btn"
+              style="flex: 1; justify-content: center;"
+              [ngClass]="dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'btn-primary' : 'btn-outline'"
+              (click)="conmutarAdaptadorCloud('AZURE_CLOUD')"
+            >
+              Activar Adaptadores AZURE CLOUD (Blob + ADLS Gen2)
+            </button>
+          </div>
+
+          <div
+            style="background: rgba(11, 19, 43, 0.85); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px; font-size: 0.78rem; display: flex; flex-direction: column; gap: 6px;"
+          >
+            <div>
+              <strong style="color: var(--telemetry-cyan);">IParkingRepositoryPort:</strong>
+              <span class="mono"> {{ dashboardGlobal.arquitectura.puertos_hexagonales.IParkingRepositoryPort }}</span>
+            </div>
+            <div>
+              <strong style="color: var(--telemetry-cyan);">IEvidenceStoragePort:</strong>
+              <span class="mono"> {{ dashboardGlobal.arquitectura.puertos_hexagonales.IEvidenceStoragePort }}</span>
+            </div>
+            <div>
+              <strong style="color: var(--telemetry-cyan);">IAnalyticsLakePort:</strong>
+              <span class="mono"> {{ dashboardGlobal.arquitectura.puertos_hexagonales.IAnalyticsLakePort }}</span>
+            </div>
+          </div>
+
+          <!-- Tabla FinOps del Anteproyecto -->
+          <div style="margin-top: 12px;">
+            <div style="font-size: 0.76rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px;">
+              Desglose FinOps (Anteproyecto Sección 6 - East US / Brazil South):
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Servicio Cloud</th>
+                    <th>SKU Dimensionado</th>
+                    <th>24/7</th>
+                    <th>Con Apagado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of dashboardGlobal.finops.desglose_servicios">
+                    <td style="font-size: 0.74rem;">{{ item.servicio }}</td>
+                    <td class="mono" style="font-size: 0.7rem;">{{ item.sku }}</td>
+                    <td class="mono">${{ item.costo_mensual_24x7_usd }}</td>
+                    <td class="mono" style="color: var(--acid-emerald); font-weight: 700;">
+                      ${{ item.costo_mensual_optimizado_usd }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 2: MAPA DE CALOR CONSOLIDADO DE LAS 5 SEDES (7 DÍAS x 18 HORAS) -->
+      <div class="card" style="margin-bottom: 18px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Mapa de Calor Temporal Consolidado de la Red (5 Sedes Bogotá - 7 Días x 18 Horas)</div>
+            <div class="card-subtitle">
+              Identifica horas pico metropolitanas (07:00-09:00, 12:00-14:00 y 17:00-19:00) y ventanas valle para mantenimiento y batch nocturno (23:00).
+            </div>
+          </div>
+          <span class="badge badge-amber">HEATMAP MULTISEDE</span>
+        </div>
+
+        <div class="heatmap-matrix">
+          <div></div>
+          <div *ngFor="let h of horasOperacion" class="hm-hour-header">{{ h }}:00</div>
+
+          <ng-container *ngFor="let nombreDia of diasSemana; let idxDia = index">
+            <div class="hm-day-label">{{ nombreDia }}</div>
+            <div
+              *ngFor="let h of horasOperacion"
+              class="hm-cell"
+              [style.background]="obtenerColorHeatmapHorario(obtenerCeldaHeatmapHorario(dashboardGlobal.heatmap_horario_global, idxDia + 1, h).intensidad_pct)"
+              [title]="nombreDia + ' ' + h + ':00 -> ' + obtenerCeldaHeatmapHorario(dashboardGlobal.heatmap_horario_global, idxDia + 1, h).cantidad_vehiculos + ' ingresos (' + formatoCOP(obtenerCeldaHeatmapHorario(dashboardGlobal.heatmap_horario_global, idxDia + 1, h).ingresos_cop) + ')'"
+            >
+              {{ obtenerCeldaHeatmapHorario(dashboardGlobal.heatmap_horario_global, idxDia + 1, h).cantidad_vehiculos }}
+            </div>
+          </ng-container>
+        </div>
+      </div>
+
+      <!-- FILA 3: HISTORIAL DE CIERRES BATCH PARQUET (CAPA ANALÍTICA DATA LAKE) -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Consolidación Analítica Batch Nocturna (Apache Parquet + Compresión Snappy)</div>
+            <div class="card-subtitle">
+              Archivos particionados por año/mes/sede con placas anonimizadas (SHA-256) listos para consulta en Azure Synapse Serverless SQL.
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha Cierre</th>
+                <th>Sede</th>
+                <th>Estancias Procesadas</th>
+                <th>Ingresos Consolidados</th>
+                <th>Ocupación Pico</th>
+                <th>URI Archivo Parquet (ADLS Gen2 / Local Lake)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let c of dashboardGlobal.cierres_parquet">
+                <td class="mono">{{ c.fecha_cierre | date:'yyyy-MM-dd' }}</td>
+                <td style="font-weight: 700;">{{ c.nombre_sede }}</td>
+                <td class="mono">{{ c.total_estancias_procesadas }}</td>
+                <td class="mono" style="color: var(--acid-emerald); font-weight: 700;">
+                  {{ formatoCOP(c.ingresos_consolidados_cop) }}
+                </td>
+                <td class="mono">{{ c.ocupacion_pico_pct }}%</td>
+                <td class="mono" style="font-size: 0.74rem; color: var(--telemetry-cyan);">
+                  {{ c.uri_archivo_parquet }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 4: MODELO ENTIDAD-RELACIÓN (ER) ACID E IDENTIDAD DE MARCA       -->
+    <!-- ===================================================================== -->
+    <section *ngIf="vistaActiva === 'MODELO_ER'">
+      <!-- DIAGRAMACIÓN VISUAL INTERACTIVA DEL MODELO ER (SVG VECTORIAL) -->
+      <div class="card" style="margin-bottom: 18px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Diagrama Entidad-Relación (ER) PostgreSQL 3FN con Garantías ACID y Ley 1581</div>
+            <div class="card-subtitle">
+              Modelo relacional transaccional diseñado para escalar de PostgreSQL Local a Azure Database for PostgreSQL Flexible Server (SKU B1ms).
+            </div>
+          </div>
+          <span class="badge badge-emerald">10 ENTIDADES NUCLEARES + 3 VISTAS ANALÍTICAS</span>
+        </div>
+
+        <!-- Lienzo SVG del Diagrama ER con Relaciones Cardinales -->
+        <div
+          style="background: #070d1f; border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; overflow-x: auto; margin-bottom: 16px;"
+        >
+          <svg viewBox="0 0 1120 470" style="width: 100%; min-width: 960px; height: auto; font-family: 'Inter', sans-serif;">
+            <!-- Líneas de Relación FK (Conectores ortogonales) -->
+            <g stroke="#00D2FF" stroke-width="2" fill="none" stroke-dasharray="4 2">
+              <!-- sedes -> zonas_sede -->
+              <path d="M 220 85 L 290 85" />
+              <!-- zonas_sede -> celdas -->
+              <path d="M 490 85 L 560 85" />
+              <!-- sedes -> tarifas_sede -->
+              <path d="M 120 145 L 120 210" />
+              <!-- convenios -> clientes -->
+              <path d="M 120 385 L 290 385" />
+              <!-- clientes -> vehiculos -->
+              <path d="M 490 385 L 560 385" />
+              <!-- celdas -> estancias -->
+              <path d="M 665 145 L 665 205" />
+              <!-- vehiculos -> estancias -->
+              <path d="M 665 330 L 665 295" />
+              <!-- estancias -> pagos -->
+              <path d="M 780 245 L 870 120" />
+              <!-- estancias -> evidencias_lpr -->
+              <path d="M 780 255 L 870 255" />
+              <!-- evidencias_lpr -> auditoria_evidencias -->
+              <path d="M 980 305 L 980 355" />
+              <!-- sedes -> cierres_batch_parquet -->
+              <path d="M 220 250 L 300 250" />
+            </g>
+
+            <!-- Caja 1: sedes -->
+            <g transform="translate(20, 30)">
+              <rect width="200" height="110" rx="8" fill="#162447" stroke="#0066FF" stroke-width="2" />
+              <rect width="200" height="28" rx="8" fill="#0066FF" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">1. sedes (5 Bogotá)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_sede (SERIAL)</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">codigo_sede UNIQUE</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">capacidad_total (200)</text>
+              <text x="12" y="96" fill="#6EE7B7" font-size="10">CHECK (cupos &gt;= 0)</text>
+            </g>
+
+            <!-- Caja 2: zonas_sede -->
+            <g transform="translate(290, 30)">
+              <rect width="200" height="110" rx="8" fill="#162447" stroke="#0284C7" stroke-width="2" />
+              <rect width="200" height="28" rx="8" fill="#0284C7" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">2. zonas_sede (1:N)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_zona</text>
+              <text x="12" y="64" fill="#94A3B8" font-size="11" font-family="JetBrains Mono">FK id_sede</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">codigo_zona (Z-A..Z-D)</text>
+              <text x="12" y="96" fill="#E2E8F0" font-size="11">tipo_zona, piso</text>
+            </g>
+
+            <!-- Caja 3: celdas -->
+            <g transform="translate(560, 30)">
+              <rect width="220" height="115" rx="8" fill="#162447" stroke="#10B981" stroke-width="2" />
+              <rect width="220" height="28" rx="8" fill="#10B981" />
+              <text x="12" y="19" fill="#062E22" font-weight="800" font-size="12">3. celdas (# Parqueadero)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_celda</text>
+              <text x="12" y="64" fill="#94A3B8" font-size="11" font-family="JetBrains Mono">FK id_sede, id_zona</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">numero_celda (A-01..D-40)</text>
+              <text x="12" y="96" fill="#6EE7B7" font-size="10">SELECT ... FOR UPDATE</text>
+            </g>
+
+            <!-- Caja 4: tarifas_sede -->
+            <g transform="translate(20, 200)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#64748B" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#475569" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">tarifas_sede (1:N)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_tarifa | FK id_sede</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">tipo_vehiculo</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">valor_minuto_cop, plena_dia</text>
+            </g>
+
+            <!-- Caja 5: cierres_batch_parquet -->
+            <g transform="translate(290, 200)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#3B82F6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#2563EB" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">10. cierres_parquet</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_cierre | FK id_sede</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">uri_archivo_parquet</text>
+              <text x="12" y="78" fill="#93C5FD" font-size="10">ADLS Gen2 Snappy + SHA256</text>
+            </g>
+
+            <!-- Caja 6: estancias (NÚCLEO TRANSACCIONAL ACID) -->
+            <g transform="translate(550, 200)">
+              <rect width="235" height="105" rx="8" fill="#2A1215" stroke="#EF4444" stroke-width="2.5" />
+              <rect width="235" height="28" rx="8" fill="#EF4444" />
+              <text x="12" y="19" fill="#FFF" font-weight="800" font-size="12">6. estancias (Núcleo ACID)</text>
+              <text x="12" y="46" fill="#FCA5A5" font-size="11" font-family="JetBrains Mono">PK id_estancia (BIGSERIAL)</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11" font-family="JetBrains Mono">FK id_sede, id_celda, id_vehiculo</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">timestamp_entrada / salida</text>
+              <text x="12" y="94" fill="#FDE68A" font-size="10">UNIQUE parcial WHERE ACTIVA</text>
+            </g>
+
+            <!-- Caja 7: convenios_empresariales -->
+            <g transform="translate(20, 335)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#8B5CF6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#7C3AED" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">convenios_empresariales</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_convenio</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">nit_empresa UNIQUE</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">porcentaje_descuento (0-100)</text>
+            </g>
+
+            <!-- Caja 8: clientes (Ley 1581) -->
+            <g transform="translate(290, 335)">
+              <rect width="200" height="100" rx="8" fill="#162447" stroke="#8B5CF6" stroke-width="2" />
+              <rect width="200" height="26" rx="8" fill="#8B5CF6" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">4. clientes (Ley 1581)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_cliente | FK convenio</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">documento_identidad UNIQUE</text>
+              <text x="12" y="78" fill="#C4B5FD" font-size="10">acepta_habeas_data_ley1581</text>
+            </g>
+
+            <!-- Caja 9: vehiculos (Anonimización SHA-256) -->
+            <g transform="translate(560, 335)">
+              <rect width="220" height="100" rx="8" fill="#162447" stroke="#6366F1" stroke-width="2" />
+              <rect width="220" height="26" rx="8" fill="#4F46E5" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">5. vehiculos (SHA-256)</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_vehiculo | FK cliente</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">placa UNIQUE, tipo, marca</text>
+              <text x="12" y="78" fill="#A5B4FC" font-size="10" font-family="JetBrains Mono">placa_hash_sha256 (64 hex)</text>
+            </g>
+
+            <!-- Caja 10: pagos (1:1 Inmutable) -->
+            <g transform="translate(870, 55)">
+              <rect width="225" height="110" rx="8" fill="#162447" stroke="#F59E0B" stroke-width="2" />
+              <rect width="225" height="28" rx="8" fill="#D97706" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">7. pagos (1:1 Inmutable)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_pago | FK id_estancia</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">numero_comprobante UNIQUE</text>
+              <text x="12" y="80" fill="#E2E8F0" font-size="11">metodo_pago, iva_cop (19%)</text>
+              <text x="12" y="96" fill="#FDE68A" font-size="10">total_pagado_cop CHECK &gt;= 0</text>
+            </g>
+
+            <!-- Caja 11: evidencias_lpr (Blob URI) -->
+            <g transform="translate(870, 200)">
+              <rect width="225" height="105" rx="8" fill="#162447" stroke="#14B8A6" stroke-width="2" />
+              <rect width="225" height="28" rx="8" fill="#0D9488" />
+              <text x="12" y="19" fill="#FFF" font-weight="700" font-size="12">8. evidencias_lpr (Blob)</text>
+              <text x="12" y="46" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_evidencia | FK estancia</text>
+              <text x="12" y="64" fill="#E2E8F0" font-size="11">uri_blob (evidencias/año/mes)</text>
+              <text x="12" y="80" fill="#5EEAD4" font-size="10">tier: HOT / COOL / ARCHIVE</text>
+            </g>
+
+            <!-- Caja 12: auditoria_evidencias -->
+            <g transform="translate(870, 350)">
+              <rect width="225" height="90" rx="8" fill="#162447" stroke="#EC4899" stroke-width="2" />
+              <rect width="225" height="26" rx="8" fill="#DB2777" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">9. auditoria_evidencias</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK id_auditoria | FK evidencia</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">codigo_tique_soporte</text>
+              <text x="12" y="78" fill="#F9A8D4" font-size="10">motivo_inspeccion (Ley 1581)</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Tarjetas de Especificación de las 10 Tablas ACID -->
+        <div class="er-schema-grid">
+          <div
+            *ngFor="let t of tablasModeloER"
+            class="er-table-card"
+            [style.borderTop]="'3px solid ' + t.color"
+          >
+            <div class="er-table-header">
+              <span>{{ t.nombre }}</span>
+              <span class="badge badge-cyan mono">3FN ACID</span>
+            </div>
+            <div class="er-col"><strong>PK:</strong> <span class="mono">{{ t.pk }}</span></div>
+            <div class="er-col"><strong>FK:</strong> <span class="mono">{{ t.fk }}</span></div>
+            <div class="er-col" style="margin-top: 4px;"><strong>Atributos:</strong> {{ t.atributos }}</div>
+            <div
+              style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(148,163,184,0.2); font-size: 0.71rem; color: #6ee7b7;"
+            >
+              <strong>Garantía ACID:</strong> {{ t.reglaAcid }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MANUAL DE IDENTIDAD DE MARCA PARKCLOUD COLOMBIA -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Identidad Visual de Marca - ParkCloud Colombia</div>
+            <div class="card-subtitle">Sistema de 3 tipografías jerárquicas, paleta cromática y logo minimalista Nano Banana</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px;">
+          <!-- Sistema de 3 Tipografías -->
+          <div style="background: rgba(11, 19, 43, 0.75); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--telemetry-cyan); margin-bottom: 10px;">
+              Sistema Tipográfico Oficial (3 Familias):
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-family: var(--font-title); font-size: 1.15rem; font-weight: 700;">
+                1. Títulos: Space Grotesk (700 Bold)
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                Encabezados ejecutivos, indicadores de capacidad y títulos de módulos arquitectónicos.
+              </div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-family: var(--font-subtitle); font-size: 0.98rem; font-weight: 600;">
+                2. Subtítulos y Navegación: Plus Jakarta Sans (600 SemiBold)
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                Subtítulos de tarjetas, pestañas de rol, etiquetas operativas y controles de formulario.
+              </div>
+            </div>
+            <div>
+              <div style="font-family: var(--font-body); font-size: 0.88rem;">
+                3. Contenido y Datos: Inter Regular + <span class="mono">JetBrains Mono (Placas, Hash SHA-256 y COP)</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                Lectura de alta densidad en tablas transaccionales, tiques, placas y hashes criptográficos.
+              </div>
+            </div>
+          </div>
+
+          <!-- Paleta Cromática Oficial -->
+          <div style="background: rgba(11, 19, 43, 0.75); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px;">
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--telemetry-cyan); margin-bottom: 10px;">
+              Paleta Cromática Soberana:
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.73rem;">
+              <div style="padding: 10px; border-radius: 8px; background: #0B132B; border: 1px solid #334155;">
+                <strong>Midnight Navy</strong>
+                <div class="mono">#0B132B</div>
+              </div>
+              <div style="padding: 10px; border-radius: 8px; background: #0066FF; color: #fff;">
+                <strong>Azure Blue</strong>
+                <div class="mono">#0066FF</div>
+              </div>
+              <div style="padding: 10px; border-radius: 8px; background: #00D2FF; color: #051923;">
+                <strong>Telemetry Cyan</strong>
+                <div class="mono">#00D2FF</div>
+              </div>
+              <div style="padding: 10px; border-radius: 8px; background: #10B981; color: #052e16;">
+                <strong>ACID Emerald</strong>
+                <div class="mono">#10B981</div>
+              </div>
+              <div style="padding: 10px; border-radius: 8px; background: #F59E0B; color: #271701;">
+                <strong>Thermal Amber</strong>
+                <div class="mono">#F59E0B</div>
+              </div>
+              <div style="padding: 10px; border-radius: 8px; background: #EF4444; color: #fff;">
+                <strong>Occupied Crimson</strong>
+                <div class="mono">#EF4444</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
