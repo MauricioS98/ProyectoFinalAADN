@@ -166,6 +166,44 @@ app.post('/api/datalake/cierre-batch', async (req, res) => {
   }
 });
 
+// 10. Autenticación IAM / RBAC con Contraseña Hasheada (SHA-256 + Salt) y Segregación de Vistas
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { identificador, password } = req.body;
+    const authResult = await postgresRepo.autenticarUsuarioIAM(identificador, password);
+    if (!authResult.autenticado) {
+      return res.status(401).json(authResult);
+    }
+    res.json(authResult);
+  } catch (err: any) {
+    res.status(400).json({ autenticado: false, mensaje: err.message });
+  }
+});
+
+// 11. Estado del Data Lake Medallion (Raw/Trusted/Refined), Data Warehouse (Esquema Estrella), Cifrado AES-256 y CloudTrail
+app.get('/api/datalake-dwh/estado', async (_req, res) => {
+  try {
+    const estado = await postgresRepo.obtenerEstadoDataLakeYDWH();
+    res.json(estado);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 12. Pipeline ETL Serverless: OLTP -> Raw -> Trusted -> Refined -> Data Warehouse Esquema Estrella
+app.post('/api/datalake-dwh/ejecutar-etl', async (req, res) => {
+  try {
+    const { id_sede, usuario_email } = req.body;
+    const resultado = await postgresRepo.ejecutarPipelineETLMedallionEstrella(
+      id_sede ? Number(id_sede) : undefined,
+      usuario_email
+    );
+    res.status(201).json(resultado);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 const PORT = Number(process.env.PORT || 4000);
 const projectRoot = path.resolve(__dirname, '..', '..');
 
