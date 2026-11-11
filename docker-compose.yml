@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  postgres-acid:
+    image: postgres:17-alpine
+    container_name: parkcloud-postgres-acid
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: parkcloud_db
+      TZ: America/Bogota
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata_parkcloud:/var/lib/postgresql/data
+      - ./database/01_schema_acid.sql:/docker-entrypoint-initdb.d/01_schema_acid.sql:ro
+      - ./database/02_procedures_acid.sql:/docker-entrypoint-initdb.d/02_procedures_acid.sql:ro
+      - ./database/03_seed_bogota_5_sedes.sql:/docker-entrypoint-initdb.d/03_seed_bogota_5_sedes.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d parkcloud_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend-hexagonal:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: parkcloud-backend-hexagonal
+    restart: unless-stopped
+    depends_on:
+      postgres-acid:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      PGHOST: postgres-acid
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: password
+      PGDATABASE: parkcloud_db
+      STORAGE_PROVIDER: LOCAL_DISK
+      LAKE_PROVIDER: LOCAL_PARQUET
+    ports:
+      - '4000:4000'
+
+volumes:
+  pgdata_parkcloud:
+
