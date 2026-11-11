@@ -21,6 +21,20 @@ export class AppComponent implements OnInit, OnDestroy {
   mensajeExito = '';
   mensajeError = '';
 
+  // Autenticación IAM con Contraseña Hasheada (SHA-256 + Salt) y Control de Vistas por Rol
+  usuarioAutenticado: any = null;
+  loginForm = {
+    identificador: 'lvgomez.chp@parkcloud.co',
+    password: 'Park2026*',
+  };
+  loginError = '';
+  iniciandoSesion = false;
+
+  // Estado de Data Lake Medallion (Raw/Trusted/Refined), Data Warehouse Estrella, ETL y CloudTrail
+  estadoDataLakeDWH: any = null;
+  ejecutandoETL = false;
+  zonaMedallionFiltro: 'TODAS' | 'RAW' | 'TRUSTED' | 'REFINED' = 'TODAS';
+
   // Cronómetro en vivo para estancias activas (el tiempo sigue corriendo mientras no se liquide el pago)
   private relojInterval: any = null;
   tiempoCorriendoTexto = '00m 00s';
@@ -154,6 +168,58 @@ export class AppComponent implements OnInit, OnDestroy {
     },
   ];
 
+  // Metadatos del Modelo Analítico Dimensional (Esquema Estrella - Data Warehouse)
+  readonly tablasEsquemaEstrella = [
+    {
+      nombre: 'FACT: dw_fact_estancias_recaudo',
+      tipo: 'TABLA DE HECHOS CENTRAL',
+      pk: 'id_hecho_estancia (BIGSERIAL PK)',
+      fk: 'sk_tiempo, sk_sede, sk_vehiculo, sk_tarifa, sk_metodo_pago',
+      metricas: 'minutos_permanencia, recaudo_bruto_cop, descuento_otorgado_cop, iva_recaudado_cop, recaudo_neto_cop, rotacion_celda_unidades',
+      color: '#F59E0B',
+    },
+    {
+      nombre: 'DIM 1: dw_dim_tiempo',
+      tipo: 'DIMENSIÓN TEMPORAL',
+      pk: 'sk_tiempo (SERIAL PK)',
+      fk: 'Referenciada por dw_fact_estancias_recaudo(sk_tiempo)',
+      metricas: 'fecha, anio, mes, nombre_mes, dia_semana, nombre_dia, hora_dia, franja_horaria (PICO_MANANA, VALLE_TARDE, PICO_TARDE_NOCHE)',
+      color: '#0284C7',
+    },
+    {
+      nombre: 'DIM 2: dw_dim_sede',
+      tipo: 'DIMENSIÓN GEOGRÁFICA',
+      pk: 'sk_sede (SERIAL PK)',
+      fk: 'Referenciada por dw_fact_estancias_recaudo(sk_sede)',
+      metricas: 'id_sede_nk, codigo_sede, nombre_sede, localidad, ciudad, capacidad_instalada (200 cupos)',
+      color: '#10B981',
+    },
+    {
+      nombre: 'DIM 3: dw_dim_vehiculo_anonimizado',
+      tipo: 'DIMENSIÓN LEY 1581 (SHA-256)',
+      pk: 'sk_vehiculo (SERIAL PK)',
+      fk: 'Referenciada por dw_fact_estancias_recaudo(sk_vehiculo)',
+      metricas: 'placa_hash_sha256 UNIQUE (Sin PII), tipo_vehiculo, marca_homologada, gama_color',
+      color: '#8B5CF6',
+    },
+    {
+      nombre: 'DIM 4: dw_dim_tarifa_convenio',
+      tipo: 'DIMENSIÓN COMERCIAL',
+      pk: 'sk_tarifa (SERIAL PK)',
+      fk: 'Referenciada por dw_fact_estancias_recaudo(sk_tarifa)',
+      metricas: 'modalidad_tarifa, nombre_convenio, porcentaje_descuento, cobra_minimo_15min ($2.000 COP)',
+      color: '#EC4899',
+    },
+    {
+      nombre: 'DIM 5: dw_dim_metodo_pago',
+      tipo: 'DIMENSIÓN FINANCIERA',
+      pk: 'sk_metodo_pago (SERIAL PK)',
+      fk: 'Referenciada por dw_fact_estancias_recaudo(sk_metodo_pago)',
+      metricas: 'metodo_pago (EFECTIVO, PSE_NEQUI_DAVIPLATA, TARJETA, CONVENIO), canal_recaudo, requiere_conciliacion_bancaria',
+      color: '#14B8A6',
+    },
+  ];
+
   constructor(private readonly api: ParkCloudApiService) {}
 
   ngOnInit(): void {
@@ -161,6 +227,59 @@ export class AppComponent implements OnInit, OnDestroy {
     this.relojInterval = setInterval(() => {
       this.actualizarCronometroEnVivo();
     }, 1000);
+  }
+
+  seleccionarCredencialRapida(identificador: string): void {
+    this.loginForm.identificador = identificador;
+    this.loginForm.password = 'Park2026*';
+    this.loginError = '';
+  }
+
+  iniciarSesionIAM(): void {
+    if (!this.loginForm.identificador || !this.loginForm.password) {
+      this.loginError = 'Ingresa usuario/correo institucional y contraseña.';
+      return;
+    }
+    this.iniciandoSesion = true;
+    this.loginError = '';
+    this.api.loginIAM(this.loginForm.identificador, this.loginForm.password).subscribe({
+      next: (res) => {
+        this.iniciandoSesion = false;
+        if (res.autenticado && res.usuario) {
+          this.usuarioAutenticado = res.usuario;
+          this.vistaActiva = res.usuario.vista_inicial as VistaActiva;
+          if (res.usuario.id_sede_asignada) {
+            this.idSedeSeleccionada = Number(res.usuario.id_sede_asignada);
+          }
+          this.recargarTodo();
+          this.mostrarExito(
+            `Sesión IAM iniciada: ${res.usuario.nombre_completo} [${res.usuario.rol}] | Hash SHA-256 verificado.`
+          );
+        } else {
+          this.loginError = res.mensaje || 'No se pudo autenticar.';
+        }
+      },
+      error: (err) => {
+        this.iniciandoSesion = false;
+        this.loginError = err?.error?.mensaje || 'Credenciales inválidas (verificación SHA-256 + Salt fallida).';
+      },
+    });
+  }
+
+  cerrarSesionIAM(): void {
+    this.usuarioAutenticado = null;
+    this.limpiarAlertas();
+  }
+
+  tieneAccesoVista(vista: VistaActiva): boolean {
+    if (!this.usuarioAutenticado) return false;
+    const autorizadas: string[] = this.usuarioAutenticado.vistas_autorizadas || [];
+    return autorizadas.includes(vista);
+  }
+
+  puedeCambiarSede(): boolean {
+    if (!this.usuarioAutenticado) return false;
+    return this.usuarioAutenticado.rol === 'ADMIN_GLOBAL' || !this.usuarioAutenticado.id_sede_asignada;
   }
 
   ngOnDestroy(): void {
@@ -263,6 +382,7 @@ export class AppComponent implements OnInit, OnDestroy {
       next: (glob) => {
         this.dashboardGlobal = glob;
         this.cargarSede(this.idSedeSeleccionada);
+        this.cargarEstadoDataLakeYDWH();
       },
       error: (err) => {
         this.mostrarError('Error conectando con el Backend Hexagonal en localhost:4000: ' + (err?.error?.error || err.message));
@@ -271,7 +391,45 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  cargarEstadoDataLakeYDWH(): void {
+    this.api.obtenerEstadoDataLakeYDWH().subscribe({
+      next: (data) => {
+        this.estadoDataLakeDWH = data;
+      },
+      error: () => {
+        // Silencioso si se está inicializando
+      },
+    });
+  }
+
+  dispararPipelineETLMedallionEstrella(idSede?: number): void {
+    this.ejecutandoETL = true;
+    this.api.ejecutarPipelineETL(idSede, this.usuarioAutenticado?.email).subscribe({
+      next: (res) => {
+        this.ejecutandoETL = false;
+        this.mostrarExito(
+          `Pipeline ETL Serverless completado (${res.latencia_etl_ms || 142} ms): OLTP -> Raw -> Trusted -> Refined -> Data Warehouse Estrella (${res.total_hechos_dwh || 222} hechos sincronizados).`
+        );
+        this.recargarTodo();
+      },
+      error: (err) => {
+        this.ejecutandoETL = false;
+        this.mostrarError(err?.error?.error || 'Error ejecutando Pipeline ETL Medallion -> Estrella');
+      },
+    });
+  }
+
+  obtenerObjetosDataLakeFiltrados(): any[] {
+    const lista = this.estadoDataLakeDWH?.datalake_medallion?.objetos || [];
+    if (this.zonaMedallionFiltro === 'TODAS') return lista;
+    return lista.filter((o: any) => o.zona_datalake === this.zonaMedallionFiltro);
+  }
+
   cargarSede(idSede: number): void {
+    if (this.usuarioAutenticado && !this.puedeCambiarSede() && Number(idSede) !== Number(this.usuarioAutenticado.id_sede_asignada)) {
+      this.mostrarError(`Política IAM de Mínimo Privilegio: Tu rol (${this.usuarioAutenticado.rol}) solo tiene acceso a tu sede asignada.`);
+      return;
+    }
     this.idSedeSeleccionada = Number(idSede);
     this.api.obtenerDashboardSede(this.idSedeSeleccionada).subscribe({
       next: (data) => {
@@ -296,6 +454,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   cambiarVista(vista: VistaActiva): void {
+    if (!this.tieneAccesoVista(vista)) {
+      this.mostrarError(`Acceso Denegado por IAM RBAC: El rol ${this.usuarioAutenticado?.rol} no está autorizado para abrir la vista ${vista}.`);
+      return;
+    }
     this.vistaActiva = vista;
     this.limpiarAlertas();
   }

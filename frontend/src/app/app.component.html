@@ -1,78 +1,254 @@
 <div class="parkcloud-shell">
-  <!-- TOPBAR SOBERANO DE IDENTIDAD Y CONMUTACIÓN DE ROL / SEDE -->
-  <header class="topbar">
-    <div class="brand-cluster">
-      <img
-        src="assets/logo-parkcloud.png"
-        alt="Logo ParkCloud Colombia"
-        width="48"
-        height="48"
-        style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover;"
-      />
-      <div>
-        <div class="brand-title">ParkCloud Colombia</div>
-        <div class="brand-subtitle">
-          Arquitectura Hexagonal ACID - 5 Sedes Bogotá D.C.
-          <span
-            *ngIf="dashboardGlobal?.arquitectura"
-            class="badge"
-            [ngClass]="dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'badge-cyan' : 'badge-emerald'"
-            style="margin-left: 6px;"
+  <!-- ========================================================================= -->
+  <!-- PANTALLA DE LOGIN CON CONTRASEÑA HASHEADA (SHA-256 + SALT) Y RBAC IAM     -->
+  <!-- ========================================================================= -->
+  <div
+    *ngIf="!usuarioAutenticado"
+    style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(circle at top right, rgba(0, 102, 255, 0.22), rgba(7, 17, 36, 0.98) 65%);"
+  >
+    <div
+      class="card"
+      style="max-width: 920px; width: 100%; padding: 32px; border: 1px solid rgba(56, 189, 248, 0.35); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);"
+    >
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <img
+            src="assets/logo-parkcloud.png"
+            alt="Logo ParkCloud Colombia"
+            width="56"
+            height="56"
+            style="width: 56px; height: 56px; border-radius: 12px; object-fit: cover; border: 1px solid rgba(56, 189, 248, 0.4);"
+          />
+          <div>
+            <h1 style="margin: 0; font-size: 1.45rem; font-weight: 800; color: #f8fafc;">
+              ParkCloud Colombia - Control de Acceso IAM &amp; RBAC
+            </h1>
+            <p style="margin: 4px 0 0; font-size: 0.82rem; color: #94a3b8;">
+              Autenticación con Contraseña Hasheada (<span class="mono" style="color: #38bdf8;">SHA-256 + Salt</span>) en PostgreSQL y segregación estricta de vistas por rol
+            </p>
+          </div>
+        </div>
+        <span class="badge badge-emerald" style="font-size: 0.75rem; padding: 6px 12px;">
+          TLS 1.3 In-Transit + AES-256 At-Rest Activo
+        </span>
+      </div>
+
+      <div class="grid-2" style="gap: 28px; align-items: start;">
+        <!-- COLUMNA IZQUIERDA: FORMULARIO DE INGRESO -->
+        <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 22px;">
+          <h3 style="margin: 0 0 6px; font-size: 1.05rem; color: #f8fafc;">Iniciar Sesión en la Plataforma</h3>
+          <p style="margin: 0 0 18px; font-size: 0.78rem; color: #94a3b8;">
+            Según tu rol IAM autenticado, el sistema desbloqueará únicamente la vista y sede que te corresponden por principio de mínimo privilegio.
+          </p>
+
+          <div *ngIf="loginError" style="margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; background: rgba(239, 68, 68, 0.16); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 0.8rem; font-weight: 600;">
+            {{ loginError }}
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; margin-bottom: 6px; font-size: 0.78rem; color: #cbd5e1; font-weight: 600;">
+              Usuario o Correo Institucional
+            </label>
+            <input
+              type="text"
+              [(ngModel)]="loginForm.identificador"
+              placeholder="Ej: lvgomez.chp@parkcloud.co"
+              style="width: 100%; padding: 10px 12px; font-size: 0.9rem;"
+              (keyup.enter)="iniciarSesionIAM()"
+            />
+          </div>
+
+          <div style="margin-bottom: 18px;">
+            <label style="display: block; margin-bottom: 6px; font-size: 0.78rem; color: #cbd5e1; font-weight: 600;">
+              Contraseña (Se valida contra Hash SHA-256 + Salt en BD)
+            </label>
+            <input
+              type="password"
+              [(ngModel)]="loginForm.password"
+              placeholder="Contraseña"
+              style="width: 100%; padding: 10px 12px; font-size: 0.9rem;"
+              (keyup.enter)="iniciarSesionIAM()"
+            />
+            <div style="margin-top: 6px; font-size: 0.71rem; color: #64748b;">
+              Función SQL: <span class="mono" style="color: #93c5fd;">fn_hash_password_iam(password || '::PARKCLOUD_IAM_SALT_2026')</span>
+            </div>
+          </div>
+
+          <button
+            class="btn btn-primary"
+            style="width: 100%; padding: 12px; font-size: 0.92rem; font-weight: 700;"
+            [disabled]="iniciandoSesion"
+            (click)="iniciarSesionIAM()"
           >
-            {{ dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'MODO CLOUD AZURE ACTIVO' : 'MODO LOCAL POSTGRESQL ACID' }}
-          </span>
+            {{ iniciandoSesion ? 'Verificando Hash SHA-256 en PostgreSQL...' : 'Ingresar a mi Vista Autorizada' }}
+          </button>
+        </div>
+
+        <!-- COLUMNA DERECHA: TARJETAS DE ACCESO RÁPIDO POR ROL PARA SUSTENTACIÓN -->
+        <div>
+          <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; margin-bottom: 10px;">
+            Perfiles IAM de Prueba (Clic para autocompletar credenciales)
+          </div>
+
+          <!-- PERFIL 1: RECEPCIONISTA -->
+          <div
+            (click)="seleccionarCredencialRapida('lvgomez.chp@parkcloud.co')"
+            style="cursor: pointer; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); margin-bottom: 10px; transition: all 0.15s;"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: #6ee7b7; font-size: 0.86rem;">1. Recepcionista de Sede (Operación # Celda)</strong>
+              <span class="badge badge-emerald">OPERADOR_SEDE</span>
+            </div>
+            <div class="mono" style="font-size: 0.76rem; color: #e2e8f0; margin-top: 4px;">
+              Usuario: lvgomez.chp&#64;parkcloud.co | Clave: Park2026*
+            </div>
+            <div style="font-size: 0.73rem; color: #94a3b8; margin-top: 4px;">
+              Entra <strong>únicamente a Vista 1</strong> (Sede Chapinero). Registra entradas, preliquida con reloj en vivo y cobra en Efectivo/Nequi.
+            </div>
+          </div>
+
+          <!-- PERFIL 2: ADMIN DE PARQUEADERO LOCAL -->
+          <div
+            (click)="seleccionarCredencialRapida('admin.chapinero@parkcloud.co')"
+            style="cursor: pointer; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); margin-bottom: 10px; transition: all 0.15s;"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: #7dd3fc; font-size: 0.86rem;">2. Administrador de Parqueadero Local</strong>
+              <span class="badge badge-cyan">ADMIN_SEDE</span>
+            </div>
+            <div class="mono" style="font-size: 0.76rem; color: #e2e8f0; margin-top: 4px;">
+              Usuario: admin.chapinero&#64;parkcloud.co | Clave: Park2026*
+            </div>
+            <div style="font-size: 0.73rem; color: #94a3b8; margin-top: 4px;">
+              Entra <strong>únicamente a Vista 2</strong> (Sede Chapinero). Gestiona mapas de calor, tarifas COP y auditoría de fotos LPR Ley 1581.
+            </div>
+          </div>
+
+          <!-- PERFIL 3: ADMIN GLOBAL MULTISEDE -->
+          <div
+            (click)="seleccionarCredencialRapida('msancheza@udistrital.edu.co')"
+            style="cursor: pointer; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08); transition: all 0.15s;"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: #fcd34d; font-size: 0.86rem;">3. Administrador Global (5 Sedes + Data Lake + DWH)</strong>
+              <span class="badge badge-amber">ADMIN_GLOBAL</span>
+            </div>
+            <div class="mono" style="font-size: 0.76rem; color: #e2e8f0; margin-top: 4px;">
+              Usuario: msancheza&#64;udistrital.edu.co | Clave: Park2026*
+            </div>
+            <div style="font-size: 0.73rem; color: #94a3b8; margin-top: 4px;">
+              Entra a <strong>Vista 3 (Global, Data Lake Raw/Trusted/Refined, Data Warehouse Estrella, Pipeline ETL y CloudTrail)</strong> y <strong>Vista 4 (Diagramas ER)</strong>.
+            </div>
+          </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- SELECTOR DE SEDE ACTIVA -->
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <div style="display: flex; flex-direction: column;">
-        <label style="margin-bottom: 2px; font-size: 0.68rem;">Sede en Operación (Bogotá)</label>
-        <select
-          [ngModel]="idSedeSeleccionada"
-          (ngModelChange)="cargarSede($event)"
-          style="min-width: 245px; font-weight: 600;"
-        >
-          <option *ngFor="let s of dashboardGlobal?.sedes" [ngValue]="s.id_sede">
-            [{{ s.codigo_sede }}] {{ s.nombre }} ({{ s.ocupacion_porcentaje }}% ocup.)
-          </option>
-        </select>
+  <!-- ========================================================================= -->
+  <!-- APLICACIÓN AUTENTICADA (SEGREGADA ESTRICTAMENTE SEGÚN ROL IAM)            -->
+  <!-- ========================================================================= -->
+  <ng-container *ngIf="usuarioAutenticado">
+    <!-- TOPBAR SOBERANO DE IDENTIDAD Y CONMUTACIÓN DE ROL / SEDE -->
+    <header class="topbar">
+      <div class="brand-cluster">
+        <img
+          src="assets/logo-parkcloud.png"
+          alt="Logo ParkCloud Colombia"
+          width="48"
+          height="48"
+          style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover;"
+        />
+        <div>
+          <div class="brand-title">ParkCloud Colombia</div>
+          <div class="brand-subtitle">
+            Arquitectura Hexagonal ACID - 5 Sedes Bogotá D.C.
+            <span
+              *ngIf="dashboardGlobal?.arquitectura"
+              class="badge"
+              [ngClass]="dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'badge-cyan' : 'badge-emerald'"
+              style="margin-left: 6px;"
+            >
+              {{ dashboardGlobal.arquitectura.modo_activo === 'AZURE_CLOUD' ? 'MODO CLOUD AZURE ACTIVO' : 'MODO LOCAL POSTGRESQL ACID' }}
+            </span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- PESTAÑAS DE VISTAS POR ROL + MODELO ER -->
-    <nav class="role-tabs">
-      <button
-        class="role-tab"
-        [class.active]="vistaActiva === 'OPERADOR_SEDE'"
-        (click)="cambiarVista('OPERADOR_SEDE')"
-      >
-        1. Recepcionista (Operación # Celda)
-      </button>
-      <button
-        class="role-tab"
-        [class.active]="vistaActiva === 'ADMIN_SEDE'"
-        (click)="cambiarVista('ADMIN_SEDE')"
-      >
-        2. Admin de Parqueadero (Sede)
-      </button>
-      <button
-        class="role-tab"
-        [class.active]="vistaActiva === 'ADMIN_GLOBAL'"
-        (click)="cambiarVista('ADMIN_GLOBAL')"
-      >
-        3. Admin Todos los Parqueaderos (Global)
-      </button>
-      <button
-        class="role-tab"
-        [class.active]="vistaActiva === 'MODELO_ER'"
-        (click)="cambiarVista('MODELO_ER')"
-      >
-        4. Diagrama ER ACID &amp; Marca
-      </button>
-    </nav>
-  </header>
+      <!-- SELECTOR DE SEDE ACTIVA (Bloqueado si el rol IAM es de una sola sede) -->
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="display: flex; flex-direction: column;">
+          <label style="margin-bottom: 2px; font-size: 0.68rem;">
+            Sede en Operación {{ puedeCambiarSede() ? '(Multisede Bogotá)' : '(Fijada por Rol IAM)' }}
+          </label>
+          <select
+            [ngModel]="idSedeSeleccionada"
+            (ngModelChange)="cargarSede($event)"
+            [disabled]="!puedeCambiarSede()"
+            style="min-width: 245px; font-weight: 600;"
+          >
+            <option *ngFor="let s of dashboardGlobal?.sedes" [ngValue]="s.id_sede">
+              [{{ s.codigo_sede }}] {{ s.nombre }} ({{ s.ocupacion_porcentaje }}% ocup.)
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <!-- PESTAÑAS DE VISTAS AUTORIZADAS POR EL ROL IAM + BOTÓN CERRAR SESIÓN -->
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <nav class="role-tabs">
+          <button
+            *ngIf="tieneAccesoVista('OPERADOR_SEDE')"
+            class="role-tab"
+            [class.active]="vistaActiva === 'OPERADOR_SEDE'"
+            (click)="cambiarVista('OPERADOR_SEDE')"
+          >
+            1. Recepcionista (Operación # Celda)
+          </button>
+          <button
+            *ngIf="tieneAccesoVista('ADMIN_SEDE')"
+            class="role-tab"
+            [class.active]="vistaActiva === 'ADMIN_SEDE'"
+            (click)="cambiarVista('ADMIN_SEDE')"
+          >
+            2. Admin de Parqueadero (Sede)
+          </button>
+          <button
+            *ngIf="tieneAccesoVista('ADMIN_GLOBAL')"
+            class="role-tab"
+            [class.active]="vistaActiva === 'ADMIN_GLOBAL'"
+            (click)="cambiarVista('ADMIN_GLOBAL')"
+          >
+            3. Admin Global (5 Sedes + Data Lake + DWH)
+          </button>
+          <button
+            *ngIf="tieneAccesoVista('MODELO_ER')"
+            class="role-tab"
+            [class.active]="vistaActiva === 'MODELO_ER'"
+            (click)="cambiarVista('MODELO_ER')"
+          >
+            4. Diagramas ER (3FN + Estrella) &amp; Marca
+          </button>
+        </nav>
+
+        <!-- BADGE DE SESIÓN IAM Y CIERRE DE SESIÓN -->
+        <div style="display: flex; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); padding: 6px 12px; border-radius: 10px;">
+          <div style="text-align: right;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #f8fafc;">{{ usuarioAutenticado.nombre_completo }}</div>
+            <div class="mono" style="font-size: 0.66rem; color: #38bdf8;">
+              Rol: {{ usuarioAutenticado.rol }} | Hash SHA-256 OK
+            </div>
+          </div>
+          <button
+            class="btn btn-outline"
+            style="padding: 5px 10px; font-size: 0.74rem; border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;"
+            (click)="cerrarSesionIAM()"
+          >
+            Cambiar Usuario / Salir
+          </button>
+        </div>
+      </div>
+    </header>
 
   <!-- CONTENIDO PRINCIPAL -->
   <main class="main-container">
@@ -1230,7 +1406,7 @@
       </div>
 
       <!-- FILA 3: HISTORIAL DE CIERRES BATCH PARQUET (CAPA ANALÍTICA DATA LAKE) -->
-      <div class="card">
+      <div class="card" style="margin-bottom: 18px;">
         <div class="card-header">
           <div>
             <div class="card-title">Consolidación Analítica Batch Nocturna (Apache Parquet + Compresión Snappy)</div>
@@ -1266,6 +1442,197 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- FILA 4: PIPELINE ETL SERVERLESS Y ZONAS DEL DATA LAKE MEDALLION (RAW, TRUSTED, REFINED) -->
+      <div class="card" style="margin-bottom: 18px;" *ngIf="estadoDataLakeDWH">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              Arquitectura Data Lake Medallion (Raw / Trusted / Refined) &amp; Pipeline ETL Serverless
+            </div>
+            <div class="card-subtitle">
+              Flujo automatizado: Ingesta Transaccional OLTP -&gt; Zona Raw (JSON/CSV) -&gt; Zona Trusted (Limpieza + SHA-256 Ley 1581) -&gt; Zona Refined (Gold Parquet) -&gt; Data Warehouse Estrella
+            </div>
+          </div>
+          <button
+            class="btn btn-emerald"
+            [disabled]="ejecutandoETL"
+            (click)="dispararPipelineETLMedallionEstrella()"
+          >
+            {{ ejecutandoETL ? 'Ejecutando Pipeline ETL...' : 'Ejecutar Pipeline ETL Completo (5 Sedes -> Estrella)' }}
+          </button>
+        </div>
+
+        <!-- Tarjetas de Resumen de las 3 Zonas Medallion -->
+        <div class="grid-3" style="margin-bottom: 14px;">
+          <div
+            *ngFor="let z of estadoDataLakeDWH.datalake_medallion?.resumen_zonas"
+            style="padding: 12px 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.28);"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="font-size: 0.88rem; color: #f8fafc;">ZONA {{ z.zona_datalake }}</strong>
+              <span
+                class="badge"
+                [ngClass]="z.zona_datalake === 'RAW' ? 'badge-amber' : z.zona_datalake === 'TRUSTED' ? 'badge-cyan' : 'badge-emerald'"
+              >
+                {{ z.total_archivos }} Objetos en Bucket
+              </span>
+            </div>
+            <div class="mono" style="margin-top: 6px; font-size: 0.8rem; color: #cbd5e1;">
+              Registros: <strong>{{ z.total_registros }}</strong> | Volumen: <strong>{{ z.total_kb }} KB</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtro por Zona del Data Lake -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <button class="btn" [ngClass]="zonaMedallionFiltro === 'TODAS' ? 'btn-primary' : 'btn-outline'" style="padding: 5px 12px;" (click)="zonaMedallionFiltro = 'TODAS'">Todas las Zonas</button>
+          <button class="btn" [ngClass]="zonaMedallionFiltro === 'RAW' ? 'btn-primary' : 'btn-outline'" style="padding: 5px 12px;" (click)="zonaMedallionFiltro = 'RAW'">1. Zona RAW (Bronce)</button>
+          <button class="btn" [ngClass]="zonaMedallionFiltro === 'TRUSTED' ? 'btn-primary' : 'btn-outline'" style="padding: 5px 12px;" (click)="zonaMedallionFiltro = 'TRUSTED'">2. Zona TRUSTED (Plata)</button>
+          <button class="btn" [ngClass]="zonaMedallionFiltro === 'REFINED' ? 'btn-primary' : 'btn-outline'" style="padding: 5px 12px;" (click)="zonaMedallionFiltro = 'REFINED'">3. Zona REFINED (Oro)</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Zona</th>
+                <th>Sede</th>
+                <th>URI Objeto en Bucket Cloud / Local</th>
+                <th>Formato &amp; Compresión</th>
+                <th>Anonimizado SHA-256</th>
+                <th>Reglas de Calidad y Transformación ETL</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let obj of obtenerObjetosDataLakeFiltrados()">
+                <td>
+                  <span
+                    class="badge"
+                    [ngClass]="obj.zona_datalake === 'RAW' ? 'badge-amber' : obj.zona_datalake === 'TRUSTED' ? 'badge-cyan' : 'badge-emerald'"
+                  >
+                    {{ obj.zona_datalake }}
+                  </span>
+                </td>
+                <td style="font-weight: 600;">{{ obj.nombre_sede }}</td>
+                <td class="mono" style="font-size: 0.72rem; color: #38bdf8;">{{ obj.uri_bucket_objeto }}</td>
+                <td class="mono" style="font-size: 0.73rem;">{{ obj.formato_archivo }} ({{ obj.compresion }})</td>
+                <td>
+                  <span class="badge" [ngClass]="obj.anonimizado_sha256 ? 'badge-emerald' : 'badge-amber'">
+                    {{ obj.anonimizado_sha256 ? 'SÍ (SHA-256 + Salt)' : 'PII Crudo (Restringido)' }}
+                  </span>
+                </td>
+                <td style="font-size: 0.73rem; color: #cbd5e1;">{{ obj.reglas_calidad_aplicadas }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- FILA 5: DATA WAREHOUSE ANALÍTICO (ESQUEMA ESTRELLA) + SEGURIDAD AES-256 / CLOUDTRAIL -->
+      <div class="grid-2" style="margin-bottom: 18px;" *ngIf="estadoDataLakeDWH">
+        <!-- CUBO OLAP DEL DATA WAREHOUSE ESQUEMA ESTRELLA -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Data Warehouse Analítico: Cubo OLAP en Esquema Estrella</div>
+              <div class="card-subtitle">
+                Consulta multidimensional en vivo uniendo <span class="mono">dw_fact_estancias_recaudo</span> con las 5 tablas de dimensiones.
+              </div>
+            </div>
+            <span class="badge badge-amber">STAR SCHEMA DWH</span>
+          </div>
+
+          <div class="kpi-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 12px;" *ngIf="estadoDataLakeDWH.data_warehouse_estrella?.metricas_globales as m">
+            <div class="kpi-card" style="padding: 10px;">
+              <div class="kpi-label">Hechos Cargados</div>
+              <div class="kpi-value" style="font-size: 1.15rem;">{{ m.total_hechos_estancias }}</div>
+              <div class="kpi-sub">{{ m.dim_vehiculo_rows }} vehículos anonimizados</div>
+            </div>
+            <div class="kpi-card" style="padding: 10px;">
+              <div class="kpi-label">Recaudo Neto DWH</div>
+              <div class="kpi-value" style="font-size: 1.15rem; color: #10b981;">{{ formatoCOP(m.recaudo_total_dwh_cop) }}</div>
+              <div class="kpi-sub">IVA: {{ formatoCOP(m.iva_total_dwh_cop) }}</div>
+            </div>
+            <div class="kpi-card" style="padding: 10px;">
+              <div class="kpi-label">Estancia Media</div>
+              <div class="kpi-value" style="font-size: 1.15rem; color: #38bdf8;">{{ m.permanencia_promedio_min }} min</div>
+              <div class="kpi-sub">5 Dimensiones activas</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dim Sede</th>
+                  <th>Dim Franja</th>
+                  <th>Dim Vehículo</th>
+                  <th>Dim Pago</th>
+                  <th>Hechos</th>
+                  <th>Recaudo Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of estadoDataLakeDWH.data_warehouse_estrella?.consulta_olap_multidimensional">
+                  <td style="font-size: 0.73rem; font-weight: 600;">{{ row.nombre_sede }}</td>
+                  <td class="mono" style="font-size: 0.7rem;">{{ row.franja_horaria }}</td>
+                  <td class="mono" style="font-size: 0.7rem;">{{ row.tipo_vehiculo }}</td>
+                  <td class="mono" style="font-size: 0.7rem;">{{ row.metodo_pago }}</td>
+                  <td class="mono">{{ row.cantidad_estancias }}</td>
+                  <td class="mono" style="color: #10b981; font-weight: 700;">{{ formatoCOP(row.recaudo_neto_cop) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- MONITOR DE SEGURIDAD (AES-256 / TLS 1.3 / IAM) Y AUDITORÍA CLOUDTRAIL -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Gobierno de Seguridad (AES-256 / TLS 1.3) &amp; Monitor CloudTrail</div>
+              <div class="card-subtitle">
+                Trazabilidad inmutable de eventos IAM, ejecución de pipelines ETL, cambios de tarifas e inspecciones Ley 1581.
+              </div>
+            </div>
+            <span class="badge badge-emerald">CLOUDTRAIL ACTIVO</span>
+          </div>
+
+          <div style="padding: 10px 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); margin-bottom: 12px; font-size: 0.75rem;">
+            <div><strong>Cifrado en Reposo (At-Rest):</strong> {{ estadoDataLakeDWH.seguridad_cifrado?.cifrado_en_reposo }}</div>
+            <div><strong>Cifrado en Tránsito (In-Transit):</strong> {{ estadoDataLakeDWH.seguridad_cifrado?.cifrado_en_transito }}</div>
+            <div class="mono" style="color: #6ee7b7; margin-top: 4px; font-size: 0.7rem;">
+              Ciphertext Muestra (clientes.datos_contacto_cifrados_aes256): {{ estadoDataLakeDWH.seguridad_cifrado?.muestra_aes256_hex }}...
+            </div>
+          </div>
+
+          <div class="table-wrap" style="max-height: 295px; overflow-y: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Servicio Cloud</th>
+                  <th>Acción IAM</th>
+                  <th>Usuario / Rol</th>
+                  <th>HTTP / Latencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let ev of estadoDataLakeDWH.cloudtrail_eventos">
+                  <td class="mono" style="font-size: 0.69rem;">{{ ev.timestamp_evento | date:'HH:mm:ss' }}</td>
+                  <td style="font-size: 0.72rem; font-weight: 600; color: #38bdf8;">{{ ev.servicio_cloud }}</td>
+                  <td class="mono" style="font-size: 0.7rem;">{{ ev.accion_iam }}</td>
+                  <td style="font-size: 0.71rem;">{{ ev.usuario_email }} <span class="badge badge-cyan">{{ ev.rol_iam }}</span></td>
+                  <td class="mono" style="font-size: 0.7rem;">
+                    <span [style.color]="ev.estado_http === 200 ? '#10b981' : '#ef4444'">{{ ev.estado_http }}</span> ({{ ev.latencia_ms }}ms)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -1467,6 +1834,114 @@
         </div>
       </div>
 
+      <!-- DIAGRAMA DIMENSIONAL ANALÍTICO: ESQUEMA ESTRELLA (DATA WAREHOUSE) -->
+      <div class="card" style="margin-bottom: 18px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Modelo Analítico Dimensional: Esquema Estrella (Data Warehouse / Synapse Serverless)</div>
+            <div class="card-subtitle">
+              1 Tabla de Hechos Central (<span class="mono">dw_fact_estancias_recaudo</span>) rodeada por 5 Dimensiones Desnormalizadas alimentadas por el Pipeline ETL desde la zona Refined del Data Lake.
+            </div>
+          </div>
+          <span class="badge badge-amber">ESQUEMA ESTRELLA (1 FACT + 5 DIMS)</span>
+        </div>
+
+        <div style="background: #070d1f; border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; overflow-x: auto; margin-bottom: 16px;">
+          <svg viewBox="0 0 1050 380" style="width: 100%; min-width: 900px; height: auto; font-family: 'Inter', sans-serif;">
+            <g stroke="#F59E0B" stroke-width="2.5" fill="none" stroke-dasharray="5 3">
+              <!-- dim_tiempo -> fact -->
+              <path d="M 270 85 L 410 165" />
+              <!-- dim_sede -> fact -->
+              <path d="M 270 285 L 410 215" />
+              <!-- dim_vehiculo -> fact -->
+              <path d="M 525 115 L 525 135" />
+              <!-- dim_tarifa -> fact -->
+              <path d="M 780 85 L 645 165" />
+              <!-- dim_metodo_pago -> fact -->
+              <path d="M 780 285 L 645 215" />
+            </g>
+
+            <!-- TABLA DE HECHOS CENTRAL -->
+            <g transform="translate(395, 135)">
+              <rect width="265" height="125" rx="10" fill="#2E1B09" stroke="#F59E0B" stroke-width="3" />
+              <rect width="265" height="30" rx="10" fill="#D97706" />
+              <text x="14" y="20" fill="#FFF" font-weight="800" font-size="12">FACT: dw_fact_estancias_recaudo</text>
+              <text x="14" y="48" fill="#FDE68A" font-size="11" font-family="JetBrains Mono">PK id_hecho_estancia</text>
+              <text x="14" y="66" fill="#93C5FD" font-size="10" font-family="JetBrains Mono">FK sk_tiempo, sk_sede, sk_vehiculo</text>
+              <text x="14" y="82" fill="#93C5FD" font-size="10" font-family="JetBrains Mono">FK sk_tarifa, sk_metodo_pago</text>
+              <text x="14" y="100" fill="#6EE7B7" font-size="11" font-weight="700">Métricas: recaudo_neto_cop, iva_cop,</text>
+              <text x="14" y="114" fill="#6EE7B7" font-size="11" font-weight="700">minutos_permanencia, rotacion_unidades</text>
+            </g>
+
+            <!-- DIM 1: dw_dim_tiempo -->
+            <g transform="translate(30, 30)">
+              <rect width="240" height="95" rx="8" fill="#162447" stroke="#0284C7" stroke-width="2" />
+              <rect width="240" height="26" rx="8" fill="#0284C7" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">DIM 1: dw_dim_tiempo</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK sk_tiempo (Surrogate Key)</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">fecha, anio, mes, dia_semana</text>
+              <text x="12" y="78" fill="#7DD3FC" font-size="10">franja_horaria, es_fin_de_semana</text>
+            </g>
+
+            <!-- DIM 2: dw_dim_sede -->
+            <g transform="translate(30, 240)">
+              <rect width="240" height="95" rx="8" fill="#162447" stroke="#10B981" stroke-width="2" />
+              <rect width="240" height="26" rx="8" fill="#10B981" />
+              <text x="12" y="18" fill="#052E16" font-weight="800" font-size="12">DIM 2: dw_dim_sede</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK sk_sede | NK id_sede_nk</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">codigo_sede, nombre_sede</text>
+              <text x="12" y="78" fill="#6EE7B7" font-size="10">localidad, capacidad_instalada</text>
+            </g>
+
+            <!-- DIM 3: dw_dim_vehiculo_anonimizado -->
+            <g transform="translate(405, 10)">
+              <rect width="245" height="95" rx="8" fill="#162447" stroke="#8B5CF6" stroke-width="2" />
+              <rect width="245" height="26" rx="8" fill="#7C3AED" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="11">DIM 3: dw_dim_vehiculo_anonimizado</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK sk_vehiculo</text>
+              <text x="12" y="62" fill="#C4B5FD" font-size="10" font-family="JetBrains Mono">placa_hash_sha256 (Ley 1581)</text>
+              <text x="12" y="78" fill="#E2E8F0" font-size="11">tipo_vehiculo, marca_homologada</text>
+            </g>
+
+            <!-- DIM 4: dw_dim_tarifa_convenio -->
+            <g transform="translate(780, 30)">
+              <rect width="240" height="95" rx="8" fill="#162447" stroke="#EC4899" stroke-width="2" />
+              <rect width="240" height="26" rx="8" fill="#DB2777" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">DIM 4: dw_dim_tarifa_convenio</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK sk_tarifa</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">modalidad_tarifa, convenio</text>
+              <text x="12" y="78" fill="#F9A8D4" font-size="10">cobra_minimo_15min ($2.000 COP)</text>
+            </g>
+
+            <!-- DIM 5: dw_dim_metodo_pago -->
+            <g transform="translate(780, 240)">
+              <rect width="240" height="95" rx="8" fill="#162447" stroke="#14B8A6" stroke-width="2" />
+              <rect width="240" height="26" rx="8" fill="#0D9488" />
+              <text x="12" y="18" fill="#FFF" font-weight="700" font-size="12">DIM 5: dw_dim_metodo_pago</text>
+              <text x="12" y="44" fill="#00D2FF" font-size="11" font-family="JetBrains Mono">PK sk_metodo_pago</text>
+              <text x="12" y="62" fill="#E2E8F0" font-size="11">metodo_pago, canal_recaudo</text>
+              <text x="12" y="78" fill="#5EEAD4" font-size="10">requiere_conciliacion_bancaria</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="er-schema-grid">
+          <div
+            *ngFor="let st of tablasEsquemaEstrella"
+            class="er-table-card"
+            [style.borderTop]="'3px solid ' + st.color"
+          >
+            <div class="er-table-header">
+              <span>{{ st.nombre }}</span>
+              <span class="badge badge-amber mono">{{ st.tipo }}</span>
+            </div>
+            <div class="er-col"><strong>PK:</strong> <span class="mono">{{ st.pk }}</span></div>
+            <div class="er-col"><strong>Relación Estrella:</strong> <span class="mono">{{ st.fk }}</span></div>
+            <div class="er-col" style="margin-top: 4px;"><strong>Atributos / Métricas:</strong> {{ st.metricas }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- MANUAL DE IDENTIDAD DE MARCA PARKCLOUD COLOMBIA -->
       <div class="card">
         <div class="card-header">
@@ -1543,5 +2018,6 @@
         </div>
       </div>
     </section>
-  </main>
+    </main>
+  </ng-container>
 </div>

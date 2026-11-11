@@ -48,4 +48,19 @@ export class ParkCloudApiService {
   conmutarProveedorHexagonal(modo: 'LOCAL' | 'AZURE_CLOUD'): Observable<any> {
     return this.http.post(`${this.baseUrl}/arquitectura/switch-provider`, { modo });
   }
+
+  loginIAM(identificador: string, password: string): Observable<any> {
+    return this.http.post(`${this.baseUrl}/auth/login`, { identificador, password });
+  }
+
+  obtenerEstadoDataLakeYDWH(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/datalake-dwh/estado`);
+  }
+
+  ejecutarPipelineETL(idSede?: number, usuarioEmail?: string): Observable<any> {
+    return this.http.post(`${this.baseUrl}/datalake-dwh/ejecutar-etl`, {
+      id_sede: idSede,
+      usuario_email: usuarioEmail,
+    });
+  }
 }
