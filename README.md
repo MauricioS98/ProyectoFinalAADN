@@ -39,10 +39,11 @@ ParkCloud Colombia/
 ├── logo-parkcloud.png                       # Logo minimalista oficial generado con Nano Banana
 ├── Consola_y_Diagrama_ER_ParkCloud.html     # Consola web autocontenida + Visor interactivo del Diagrama ER
 ├── README.md                                # Documentación integral del proyecto
-├── database/                                # Scripts SQL del Modelo Relacional ACID (PostgreSQL 17)
+├── database/                                # Scripts SQL del Modelo Relacional ACID + Data Warehouse Estrella (PostgreSQL 17)
 │   ├── 01_schema_acid.sql                   # DDL 3FN: 13 tablas, restricciones CHECK, FKs e índices únicos parciales
-│   ├── 02_procedures_acid.sql               # Funciones PL/pgSQL ACID (FOR UPDATE, SHA-256 Ley 1581, liquidación)
-│   └── 03_seed_bogota_5_sedes.sql           # Poblamiento inicial de las 5 sedes de Bogotá, 200 celdas y estancias
+│   ├── 02_procedures_acid.sql               # Funciones PL/pgSQL ACID (FOR UPDATE, SHA-256 Ley 1581, cobro mín $2.000, liquidación)
+│   ├── 03_seed_bogota_5_sedes.sql           # Poblamiento inicial de las 5 sedes de Bogotá, 200 celdas y estancias
+│   └── 04_datalake_dwh_iam_audit.sql        # Login IAM SHA-256, Cifrado AES-256, Data Lake (Raw/Trusted/Refined), DWH Estrella, ETL y CloudTrail
 ├── backend/                                 # Servidor Node.js + Express en Arquitectura Hexagonal
 │   ├── package.json
 │   ├── tsconfig.json
@@ -255,45 +256,89 @@ erDiagram
 
 ---
 
-## 6. Reglas de Negocio y Vistas por Rol
+## 6. Autenticación IAM / RBAC con Contraseña Hasheada (`SHA-256 + Salt`) y Segregación de Vistas
 
-### 6.1. Vista 1 - Recepcionista / Operador de Parqueadero (`OPERADOR_SEDE`)
-Implementa exactamente el flujo operativo de recepción:
-1. **Ingreso de un Cliente (Check-In):**
-   - Llega un vehículo a la sede.
-   - El recepcionista hace clic sobre el **`# del parqueadero`** disponible (color verde, por ejemplo `#A-04`) en el mapa interactivo de 40 celdas.
-   - Se abre el formulario de entrada donde registra los datos del vehículo (`placa`, `tipo_vehiculo`, `marca`, `color`) y del cliente (`documento`, `nombre`, `telefono`, `modalidad/convenio`), o utiliza el botón **Autocompletar Demo** del módulo *Cámara LPR / Talanquera IoT (En desarrollo próximamente - Sprint Cloud)*.
-   - Al confirmar, se guarda la hora exacta de entrada en PostgreSQL, se genera la evidencia LPR y el `# del parqueadero` pasa inmediatamente a estado `OCUPADA` (color rojo) mostrando la placa en la celda.
-2. **Salida y Cobro de un Cliente (Check-Out):**
-   - Cuando el cliente se retira, el recepcionista selecciona el **`# del parqueadero`** ocupado (rojo) en la grilla o en la tabla de vehículos activos.
-   - El sistema invoca `fn_preliquidar_estancia()` y muestra en pantalla: minutos transcurridos, tarifa por minuto según tipo de vehículo (`AUTOMOVIL`, `CAMIONETA`, `MOTOCICLETA`, `ELECTRICO`), descuento por convenio empresarial o mensualidad, IVA del 19% y **Total Neto a Pagar en COP**.
-   - El recepcionista selecciona el **Método de Pago** (`EFECTIVO`, `TARJETA_DEBITO_CREDITO`, `PSE_NEQUI_DAVIPLATA` o `CARGO_CONVENIO`) y confirma la salida.
-   - El sistema emite el comprobante fiscal inmutable y **desmarca el `# del parqueadero`**, dejándolo nuevamente `DISPONIBLE` (verde).
+El sistema cuenta con una pantalla de **Login IAM** respaldada por la tabla `usuarios_sistema` en PostgreSQL y la función criptográfica `fn_hash_password_iam(password || '::PARKCLOUD_IAM_SALT_2026')`. Al autenticarse, cada usuario accede **únicamente a la vista y sede que le corresponden por principio de mínimo privilegio**:
 
-### 6.2. Vista 2 - Administrador de Parqueadero Local (`ADMIN_SEDE`)
+| Perfil / Rol IAM | Usuario / Correo Institucional | Contraseña | Vistas Desbloqueadas | Alcance de Sede |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Recepcionista de Sede (`OPERADOR_SEDE`)** | `lvgomez.chp@parkcloud.co` | `Park2026*` | **Únicamente Vista 1:** Recepcionista (Operación `# Celda`) | Fijado a **Sede 1 (Chapinero)** |
+| **2. Admin de Parqueadero Local (`ADMIN_SEDE`)** | `admin.chapinero@parkcloud.co` | `Park2026*` | **Únicamente Vista 2:** Admin de Parqueadero (Sede) | Fijado a **Sede 1 (Chapinero)** |
+| **3. Administrador Global (`ADMIN_GLOBAL`)** | `msancheza@udistrital.edu.co` | `Park2026*` | **Vista 3:** Admin Global (5 Sedes + Data Lake + DWH + ETL + CloudTrail) y **Vista 4:** Diagramas ER (3FN + Estrella) | **Multisede (Las 5 Sedes de Bogotá)** |
+
+---
+
+## 7. Reglas de Negocio Operativas y Vistas por Rol
+
+### 7.1. Vista 1 - Recepcionista / Operador de Parqueadero (`OPERADOR_SEDE`)
+Implementa el flujo operativo transaccional en tiempo real:
+1. **Ingreso de un Cliente (Check-In) y Regla de 1 Parqueadero por Persona (`CC`):**
+   - El recepcionista selecciona un **`# del parqueadero`** disponible (verde, ej. `#A-04`) en la grilla interactiva de 40 celdas.
+   - El sistema valida mediante el índice único parcial `idx_unico_cliente_activo` y el procedimiento `fn_registrar_ingreso_acido` que **una misma persona (`documento_identidad` / Cédula) solo pueda alquilar un parqueadero activo a la vez en toda la red**. Si la cédula ya tiene un cupo activo, bloquea el registro e informa en qué sede y celda se encuentra estacionada.
+2. **Pre-liquidación con Reloj en Vivo y Tarifa Mínima de `$2.000 COP` (hasta 15 min):**
+   - Al seleccionar una celda ocupada (roja, ej. `#A-07`), se muestra un **cronómetro en vivo segundo a segundo**.
+   - **Regla de Cobro Mínimo:** Del minuto `1` al minuto `15` se cobra una tarifa base fija de **`$2.000 COP`**. A partir del minuto `16`, se suma cada minuto adicional según la tarifa del tipo de vehículo (`$2.000 + (minutos - 15) * valor_minuto_cop`).
+   - El recepcionista puede calcular el pago sin dar salida; si hace clic en **`Salir sin Agregar Pago`**, la celda sigue ocupada y el tiempo continúa corriendo en tiempo real.
+3. **Recuadro Interactivo de `Agregar Pago` (Efectivo con Vueltas COP y Nequi/Transferencia con Foto):**
+   - **Pago en Efectivo (`EFECTIVO`):** Permite digitar con cuánto paga el cliente (ej. `$100.000 COP`), calcula automáticamente las **vueltas exactas a devolver** y sugiere **3 combinaciones óptimas de billetes y monedas colombianas** (`$100k, $50k, $20k, $10k, $5k, $2k, $1.000, $500, $200, $100, $50`).
+   - **Pago por Nequi / DaviPlata / Transferencia (`PSE_NEQUI_DAVIPLATA`):** Solicita el número de referencia de la transferencia y permite **tomar fotografía del comprobante con la cámara web**, subir imagen o generar comprobante digital para auditoría.
+
+### 7.2. Vista 2 - Administrador de Parqueadero Local (`ADMIN_SEDE`)
 - **Mapa de Calor Espacial por Celda (`#A-01` a `#D-40`):** Colorea cada bahía del parqueadero según su índice térmico de rotación histórica y minutos acumulados de ocupación.
 - **Mapa de Calor Temporal de la Sede (7 Días x 18 Horas):** Matriz horaria de `05:00` a `22:00` de lunes a domingo para identificar horas Valle, Moderadas y Pico en la sede.
 - **Editor de Tarifas en Vivo:** Permite actualizar el valor por minuto, tarifa plena diaria y mensualidad de cada tipo de vehículo.
 - **Bóveda de Evidencias LPR y Auditoría Ley 1581:** Muestra el ciclo de vida de cada imagen (`HOT`, `COOL`, `ARCHIVE`) y exige registrar un código de tique de soporte y motivo legal antes de desbloquear la URI del objeto.
 
-### 6.3. Vista 3 - Administrador de Todos los Parqueaderos (`ADMIN_GLOBAL`)
+### 7.3. Vista 3 - Administrador de Todos los Parqueaderos (`ADMIN_GLOBAL`)
 - **Tablero Ejecutivo Multisede:** Comparativa en tiempo real de ocupación, estancias activas y recaudo financiero de las **5 sedes de Bogotá**.
-- **Mapa de Calor Temporal Consolidado de la Red (7x18):** Visualiza el comportamiento metropolitano agregado de las 5 sedes.
-- **Conmutador en Caliente de Arquitectura Hexagonal (`LOCAL` <-> `AZURE_CLOUD`):** Permite alternar los adaptadores de salida en vivo sin reiniciar el servidor.
-- **Monitor FinOps y Cierre Batch Nocturno Parquet:** Permite disparar la consolidación analítica hacia archivos **Apache Parquet (compresión Snappy)** con placas anonimizadas (`SHA-256`).
+- **Arquitectura Data Lake Medallion (`Raw`, `Trusted`, `Refined`) y Pipeline ETL Serverless:** Visualiza los objetos almacenados en cada zona del Data Lake y permite disparar en vivo el procedimiento `fn_ejecutar_pipeline_etl_estrella`.
+- **Cubo OLAP del Data Warehouse (`Esquema Estrella`):** Consulta analítica multidimensional en vivo cruzando la tabla de hechos `dw_fact_estancias_recaudo` con sus 5 dimensiones.
+- **Gobierno de Seguridad (`AES-256 At-Rest` / `TLS 1.3 In-Transit`) y Monitor `CloudTrail / CloudWatch`:** Muestra muestras reales de cifrado simétrico `AES-256` sobre datos sensibles de clientes (`pgp_sym_encrypt`) y la bitácora de eventos IAM en tiempo real.
 
 ---
 
-## 7. Referencia de Endpoints de la API REST (`http://localhost:4000`)
+## 8. Data Lake Medallion (`Raw / Trusted / Refined`), Data Warehouse (`Esquema Estrella`) y Pipeline ETL
+
+Para cumplir íntegramente con los lineamientos de la Guía de Proyecto Final, la plataforma implementa la separación entre el mundo transaccional (**OLTP 3FN**) y el ecosistema analítico (**Data Lake + Data Warehouse Dimensional**):
+
+```mermaid
+flowchart LR
+    OLTP["Base OLTP 3FN (PostgreSQL ACID)\nestancias, pagos, vehiculos, clientes"]
+    RAW["Zona 1: RAW (Bronce)\nJSON/CSV Crudo + LPR JPEG\ndatalake/raw/"]
+    TRUSTED["Zona 2: TRUSTED (Plata)\nParquet Snappy Limpio + Placas SHA-256\ndatalake/trusted/"]
+    REFINED["Zona 3: REFINED (Oro)\nParquet Agregado Financiero\ndatalake/refined/"]
+    DWH["Data Warehouse (Esquema Estrella)\ndw_fact_estancias_recaudo + 5 Dimensiones"]
+
+    OLTP -->|"Ingesta CDC / Batch"| RAW
+    RAW -->|"Limpieza + Anonimización Ley 1581"| TRUSTED
+    TRUSTED -->|"Reglas de Negocio + IVA 19%"| REFINED
+    REFINED -->|"fn_ejecutar_pipeline_etl_estrella()"| DWH
+```
+
+### Esquema Estrella del Data Warehouse (`database/04_datalake_dwh_iam_audit.sql`)
+- **Tabla de Hechos Central (`dw_fact_estancias_recaudo`):** Almacena las métricas cuantitativas aditivas (`minutos_permanencia`, `recaudo_bruto_cop`, `descuento_otorgado_cop`, `iva_recaudado_cop`, `recaudo_neto_cop`, `rotacion_celda_unidades`) y las llaves foráneas sustitutas (`sk_*`).
+- **5 Tablas de Dimensiones Desnormalizadas:**
+  1. `dw_dim_tiempo` (`sk_tiempo`, `fecha`, `anio`, `mes`, `dia_semana`, `hora_dia`, `franja_horaria`).
+  2. `dw_dim_sede` (`sk_sede`, `codigo_sede`, `nombre_sede`, `localidad`, `capacidad_instalada`).
+  3. `dw_dim_vehiculo_anonimizado` (`sk_vehiculo`, `placa_hash_sha256` sin PII por Ley 1581, `tipo_vehiculo`, `marca_homologada`).
+  4. `dw_dim_tarifa_convenio` (`sk_tarifa`, `modalidad_tarifa`, `nombre_convenio`, `cobra_minimo_15min`).
+  5. `dw_dim_metodo_pago` (`sk_metodo_pago`, `metodo_pago`, `canal_recaudo`, `requiere_conciliacion_bancaria`).
+
+---
+
+## 9. Referencia de Endpoints de la API REST (`http://localhost:4000`)
 
 | Método | Ruta del Endpoint | Descripción Funcional |
 | :--- | :--- | :--- |
+| `POST` | `/api/auth/login` | Valida usuario/correo y contraseña contra el hash `SHA-256 + Salt` en PostgreSQL, registra evento en CloudTrail y retorna vistas autorizadas por rol IAM. |
+| `GET` | `/api/datalake-dwh/estado` | Retorna los objetos de las zonas `RAW`, `TRUSTED` y `REFINED` del Data Lake, métricas y cubo OLAP del `Esquema Estrella`, estado de cifrado `AES-256` y eventos `CloudTrail`. |
+| `POST` | `/api/datalake-dwh/ejecutar-etl` | Ejecuta el Pipeline ETL Serverless (`OLTP -> Raw -> Trusted -> Refined -> Esquema Estrella`) y escribe los artefactos en `storage_local/datalake/`. |
 | `GET` | `/api/arquitectura` | Retorna el estado activo de los puertos y adaptadores hexagonales (`LOCAL` o `AZURE_CLOUD`). |
 | `POST` | `/api/arquitectura/switch-provider` | Conmuta en caliente los adaptadores de almacenamiento entre entorno Local y Microsoft Azure. |
 | `GET` | `/api/dashboard/global` | Retorna KPIs consolidados de las 5 sedes, mapa de calor 7x18 global, cierres Parquet y métricas FinOps. |
 | `GET` | `/api/dashboard/sede/:idSede` | Retorna el estado de las 40 celdas de la sede, mapa de calor espacial/horario, tarifas, pagos y evidencias LPR. |
-| `POST` | `/api/estancias/ingreso` | Ejecuta la transacción ACID de entrada vehicular, bloquea la celda (`FOR UPDATE`) y guarda la hora de ingreso. |
-| `GET` | `/api/estancias/:idEstancia/preliquidacion` | Calcula en tiempo real los minutos transcurridos, descuentos, IVA (19%) y total a pagar antes de la salida. |
+| `POST` | `/api/estancias/ingreso` | Ejecuta la transacción ACID de entrada vehicular, valida 1 cupo activo por cédula (`CC`), bloquea la celda (`FOR UPDATE`) y guarda la hora de ingreso. |
+| `GET` | `/api/estancias/:idEstancia/preliquidacion` | Calcula en tiempo real los minutos transcurridos, cobro mínimo de `$2.000 COP` (hasta 15 min), descuentos e IVA (19%) sin cerrar la estancia. |
 | `POST` | `/api/estancias/:idEstancia/salida` | Ejecuta la transacción ACID de salida, registra el pago inmutable y libera el `# del parqueadero`. |
 | `PUT` | `/api/tarifas/:idTarifa` | Actualiza los valores tarifarios por tipo de vehículo en una sede específica. |
 | `POST` | `/api/evidencias/:idEvidencia/auditar` | Registra un evento inmutable de auditoría bajo la Ley 1581 de 2012 para desbloquear una evidencia LPR. |
