@@ -902,9 +902,9 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
 
       if (q.rowCount === 0) {
         await this.pool.query(
-          `INSERT INTO auditoria_cloudtrail_eventos (servicio_cloud, accion_iam, usuario_email, rol_iam, recurso_afectado, estado_http, latencia_ms, detalle_seguridad)
-           VALUES ('IAM / Entra ID Auth', 'AuthenticateUser', $1, 'ANONIMO', 'arn:cloud:iam:::user/' || $1, 401, 12, 'Intento de login con usuario inexistente');`,
-          [idLimpio]
+          `INSERT INTO auditoria_cloudtrail_eventos (servicio_origen, accion_ejecutada, usuario_email, rol_iam, recurso_arn, estado_http, latencia_ms, detalle_evento)
+           VALUES ('IAM / Entra ID Auth', 'AuthenticateUser', $1::VARCHAR, 'ANONIMO', $2::VARCHAR, 401, 12, 'Intento de login con usuario inexistente');`,
+          [idLimpio, `arn:cloud:iam:::user/${idLimpio}`]
         );
         return { autenticado: false, mensaje: 'Credenciales inválidas: usuario o correo institucional no registrado.' };
       }
@@ -913,9 +913,9 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
       const hashEsperado = (user.password_hash_sha256 || '').trim();
       if (hashEsperado && hashEsperado !== hashCalculado) {
         await this.pool.query(
-          `INSERT INTO auditoria_cloudtrail_eventos (servicio_cloud, accion_iam, usuario_email, rol_iam, recurso_afectado, estado_http, latencia_ms, detalle_seguridad)
-           VALUES ('IAM / Entra ID Auth', 'AuthenticateUser', $1, $2, 'arn:cloud:iam:::user/' || $3, 401, 15, 'Hash SHA-256 + Salt de contraseña no coincide');`,
-          [user.email_institucional, user.rol_rbac, user.username]
+          `INSERT INTO auditoria_cloudtrail_eventos (servicio_origen, accion_ejecutada, usuario_email, rol_iam, recurso_arn, estado_http, latencia_ms, detalle_evento)
+           VALUES ('IAM / Entra ID Auth', 'AuthenticateUser', $1::VARCHAR, $2::VARCHAR, $3::VARCHAR, 401, 15, 'Hash SHA-256 + Salt de contraseña no coincide');`,
+          [user.email_institucional, user.rol_rbac, `arn:cloud:iam:::user/${user.username}`]
         );
         return { autenticado: false, mensaje: 'Contraseña incorrecta (validación criptográfica SHA-256 + Salt fallida).' };
       }
@@ -928,11 +928,12 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
           : ['OPERADOR_SEDE'];
 
       await this.pool.query(
-        `INSERT INTO auditoria_cloudtrail_eventos (servicio_cloud, accion_iam, usuario_email, rol_iam, recurso_afectado, estado_http, latencia_ms, detalle_seguridad)
-         VALUES ('IAM / Entra ID Auth', 'AssumeRoleWithHashedPassword', $1, $2, 'arn:cloud:iam:::role/' || $2, 200, 18, $3);`,
+        `INSERT INTO auditoria_cloudtrail_eventos (servicio_origen, accion_ejecutada, usuario_email, rol_iam, recurso_arn, estado_http, latencia_ms, detalle_evento)
+         VALUES ('IAM / Entra ID Auth', 'AssumeRoleWithHashedPassword', $1::VARCHAR, $2::VARCHAR, $3::VARCHAR, 200, 18, $4::TEXT);`,
         [
           user.email_institucional,
           user.rol_rbac,
+          `arn:cloud:iam:::role/${user.rol_rbac}`,
           `Login exitoso SHA-256+Salt. Vistas autorizadas: ${vistasPermitidas.join(', ')} | Sede: ${user.id_sede_asignada || 'TODAS (Multisede)'}`,
         ]
       );
@@ -989,10 +990,23 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
     if (this.isConnectedPostgres && this.pool) {
       const zonasQ = await this.pool.query(`
         SELECT
-          d.id_objeto, d.zona_datalake, d.id_sede, s.nombre AS nombre_sede,
-          d.uri_bucket_objeto, d.formato_archivo, d.compresion, d.registros_incluidos,
-          d.tamano_kb, d.anonimizado_sha256, d.cifrado_reposo, d.reglas_calidad_aplicadas,
-          d.timestamp_ingesta
+          d.id_objeto,
+          d.zona_datalake,
+          d.id_sede,
+          s.nombre AS nombre_sede,
+          d.uri_bucket_objeto,
+          d.formato_archivo,
+          d.compresion,
+          d.registros_limpios_salida AS registros_incluidos,
+          d.tamano_kb,
+          d.anonimizacion_sha256 AS anonimizado_sha256,
+          d.cifrado_at_rest AS cifrado_reposo,
+          CASE
+            WHEN d.zona_datalake = 'RAW' THEN 'Ingesta cruda JSON/CSV desde OLTP (' || d.registros_entrada || ' registros)'
+            WHEN d.zona_datalake = 'TRUSTED' THEN 'Deduplicación, descarte de ' || d.registros_rechazados_calidad || ' nulos y Hash SHA-256 Ley 1581'
+            ELSE 'Agregación financiera Gold Parquet Snappy lista para Data Warehouse Estrella'
+          END AS reglas_calidad_aplicadas,
+          d.timestamp_procesamiento AS timestamp_ingesta
         FROM datalake_zonas_medallion d
         JOIN sedes s ON s.id_sede = d.id_sede
         ORDER BY d.id_sede ASC, d.zona_datalake ASC;
@@ -1002,7 +1016,7 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
         SELECT
           zona_datalake,
           COUNT(*)::INT AS total_archivos,
-          SUM(registros_incluidos)::INT AS total_registros,
+          SUM(registros_limpios_salida)::INT AS total_registros,
           SUM(tamano_kb)::INT AS total_kb
         FROM datalake_zonas_medallion
         GROUP BY zona_datalake;
@@ -1011,9 +1025,9 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
       const starKpisQ = await this.pool.query(`
         SELECT
           COUNT(*)::INT AS total_hechos_estancias,
-          COALESCE(SUM(recaudo_neto_cop), 0)::FLOAT AS recaudo_total_dwh_cop,
-          COALESCE(SUM(iva_recaudado_cop), 0)::FLOAT AS iva_total_dwh_cop,
-          COALESCE(SUM(descuento_otorgado_cop), 0)::FLOAT AS descuentos_dwh_cop,
+          COALESCE(SUM(total_recaudado_cop), 0)::FLOAT AS recaudo_total_dwh_cop,
+          COALESCE(SUM(iva_cop), 0)::FLOAT AS iva_total_dwh_cop,
+          COALESCE(SUM(descuento_cop), 0)::FLOAT AS descuentos_dwh_cop,
           COALESCE(ROUND(AVG(minutos_permanencia), 1), 0)::FLOAT AS permanencia_promedio_min,
           (SELECT COUNT(*)::INT FROM dw_dim_tiempo) AS dim_tiempo_rows,
           (SELECT COUNT(*)::INT FROM dw_dim_sede) AS dim_sede_rows,
@@ -1027,18 +1041,23 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
         SELECT
           ds.nombre_sede,
           ds.localidad,
-          dt.franja_horaria,
+          CASE
+            WHEN f.hora_ingreso BETWEEN 6 AND 9 THEN 'PICO_MANANA (06-09h)'
+            WHEN f.hora_ingreso BETWEEN 11 AND 14 THEN 'PICO_MEDIODIA (11-14h)'
+            WHEN f.hora_ingreso BETWEEN 17 AND 20 THEN 'PICO_TARDE (17-20h)'
+            ELSE 'VALLE_OPERATIVO'
+          END AS franja_horaria,
           dv.tipo_vehiculo,
-          dmp.metodo_pago,
-          COUNT(f.id_hecho_estancia)::INT AS cantidad_estancias,
+          dmp.codigo_metodo AS metodo_pago,
+          COUNT(f.id_hecho)::INT AS cantidad_estancias,
           ROUND(AVG(f.minutos_permanencia), 1)::FLOAT AS promedio_minutos,
-          SUM(f.recaudo_neto_cop)::FLOAT AS recaudo_neto_cop
+          SUM(f.total_recaudado_cop)::FLOAT AS recaudo_neto_cop
         FROM dw_fact_estancias_recaudo f
         JOIN dw_dim_sede ds ON ds.sk_sede = f.sk_sede
         JOIN dw_dim_tiempo dt ON dt.sk_tiempo = f.sk_tiempo
         JOIN dw_dim_vehiculo_anonimizado dv ON dv.sk_vehiculo = f.sk_vehiculo
         JOIN dw_dim_metodo_pago dmp ON dmp.sk_metodo_pago = f.sk_metodo_pago
-        GROUP BY ds.nombre_sede, ds.localidad, dt.franja_horaria, dv.tipo_vehiculo, dmp.metodo_pago
+        GROUP BY ds.nombre_sede, ds.localidad, franja_horaria, dv.tipo_vehiculo, dmp.codigo_metodo
         ORDER BY recaudo_neto_cop DESC
         LIMIT 12;
       `);
@@ -1054,7 +1073,18 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
       `);
 
       const cloudtrailQ = await this.pool.query(`
-        SELECT *
+        SELECT
+          id_evento,
+          timestamp_evento,
+          usuario_email,
+          rol_iam,
+          servicio_origen AS servicio_cloud,
+          accion_ejecutada AS accion_iam,
+          recurso_arn AS recurso_afectado,
+          ip_origen,
+          latencia_ms,
+          estado_http,
+          detalle_evento AS detalle_seguridad
         FROM auditoria_cloudtrail_eventos
         ORDER BY timestamp_evento DESC
         LIMIT 25;
@@ -1089,8 +1119,17 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
 
   public async ejecutarPipelineETLMedallionEstrella(idSede?: number, usuarioEmail?: string): Promise<any> {
     if (this.isConnectedPostgres && this.pool) {
-      const res = await this.pool.query(`SELECT fn_ejecutar_pipeline_etl_estrella($1) AS resultado;`, [idSede || null]);
-      const payload = res.rows[0]?.resultado || {};
+      const res = await this.pool.query(`SELECT * FROM fn_ejecutar_pipeline_etl_estrella($1);`, [idSede || null]);
+      const row = res.rows[0] || {};
+      const payload = {
+        sedes_procesadas: row.sedes_procesadas,
+        objetos_raw: row.objetos_raw_generados,
+        objetos_trusted: row.objetos_trusted_generados,
+        objetos_refined: row.objetos_refined_generados,
+        total_hechos_dwh: row.hechos_cargados_dwh,
+        recaudo_total_dwh_cop: Number(row.recaudo_total_dwh_cop || 0),
+        latencia_etl_ms: 138,
+      };
 
       // Escribir objetos físicos en storage_local/datalake/{raw,trusted,refined} para inspección real en disco
       const baseLake = path.join(process.cwd(), 'storage_local', 'datalake');
@@ -1120,7 +1159,7 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
 
       if (usuarioEmail) {
         await this.pool.query(
-          `INSERT INTO auditoria_cloudtrail_eventos (servicio_cloud, accion_iam, usuario_email, rol_iam, recurso_afectado, estado_http, latencia_ms, detalle_seguridad)
+          `INSERT INTO auditoria_cloudtrail_eventos (servicio_origen, accion_ejecutada, usuario_email, rol_iam, recurso_arn, estado_http, latencia_ms, detalle_evento)
            VALUES ('Serverless ETL Pipeline', 'TriggerMedallionToStarSchema', $1, 'ADMIN_GLOBAL', 'arn:cloud:dwh:::dw_fact_estancias_recaudo', 200, 138, 'Ejecución manual de Pipeline ETL: OLTP -> Raw -> Trusted -> Refined -> Esquema Estrella');`,
           [usuarioEmail]
         );
