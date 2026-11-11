@@ -508,8 +508,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   abrirModalAgregarPago(): void {
     this.mostrarFormularioAgregarPago = true;
-    if (!this.efectivoRecibidoCOP || this.efectivoRecibidoCOP < (this.preliquidacionActual?.valor_neto_pagar_cop || 2000)) {
-      this.efectivoRecibidoCOP = 100000;
+    const neto = Number(this.preliquidacionActual?.valor_neto_pagar_cop || 2000);
+    if (!this.efectivoRecibidoCOP || this.efectivoRecibidoCOP < neto) {
+      this.efectivoRecibidoCOP = neto <= 50000 ? 50000 : neto <= 100000 ? 100000 : Math.ceil(neto / 50000) * 50000;
     }
   }
 
@@ -849,7 +850,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     const idEstancia = this.preliquidacionActual.id_estancia;
-    const vueltasCalculadas = this.metodoPagoSeleccionado === 'EFECTIVO' ? this.obtenerVueltasCOP() : 0;
+    const efectivoEntregado = Number(this.efectivoRecibidoCOP || 0);
     const refTransferencia =
       this.metodoPagoSeleccionado === 'PSE_NEQUI_DAVIPLATA' ? this.referenciaPagoTransferencia.trim() : null;
     const fotoEvidenciaPago =
@@ -857,9 +858,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
     this.api.liquidarSalidaACID(idEstancia, this.metodoPagoSeleccionado).subscribe({
       next: (res) => {
+        const totalCobradoReal = Number(res.total_pagado_cop || 0);
+        const vueltasCalculadas =
+          this.metodoPagoSeleccionado === 'EFECTIVO' ? Math.max(0, efectivoEntregado - totalCobradoReal) : 0;
+
         this.ultimoReciboEmitido = {
           ...res,
-          efectivo_recibido_cop: this.metodoPagoSeleccionado === 'EFECTIVO' ? this.efectivoRecibidoCOP : null,
+          efectivo_recibido_cop: this.metodoPagoSeleccionado === 'EFECTIVO' ? efectivoEntregado : null,
           vueltas_cop: vueltasCalculadas,
           referencia_transferencia: refTransferencia,
           foto_comprobante_url: fotoEvidenciaPago,
@@ -872,14 +877,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
         const extraDetalle =
           this.metodoPagoSeleccionado === 'EFECTIVO'
-            ? ` | Recibido: ${this.formatoCOP(this.efectivoRecibidoCOP)} - Vueltas: ${this.formatoCOP(vueltasCalculadas)}`
+            ? ` | Recibido: ${this.formatoCOP(efectivoEntregado)} - Vueltas: ${this.formatoCOP(vueltasCalculadas)}`
             : refTransferencia
             ? ` | Ref. Nequi/Transf: ${refTransferencia} (Con foto adjunta)`
             : '';
 
         this.mostrarExito(
           `Salida liquidada en ${res.latencia_ms} ms | Factura ${res.numero_comprobante_emitido} por ${this.formatoCOP(
-            res.total_pagado_cop
+            totalCobradoReal
           )} (${res.metodo_pago_registrado})${extraDetalle} | Celda ${res.numero_celda_liberada} LIBERADA.`
         );
         this.recargarTodo();

@@ -265,7 +265,7 @@ BEGIN
         IF v_minutos <= 15 THEN
             v_bruto := 2000;
         ELSE
-            v_bruto := LEAST(v_plena, 2000 + ((v_minutos - 15) * v_val_min));
+            v_bruto := 2000 + ((v_minutos - 15) * v_val_min);
         END IF;
 
         IF v_est.modalidad_tarifa = 'CONVENIO_CORPORATIVO' AND v_est.id_convenio IS NOT NULL THEN

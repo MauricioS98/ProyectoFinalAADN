@@ -120,6 +120,34 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
           await this.pool.query(sql2);
           await this.pool.query(sql3);
           console.log(`[PostgreSQL] Esquema ACID y Seed de las 5 Sedes de Bogotá cargados con éxito.`);
+        } else {
+          // Asegurar siempre la última versión de los procedimientos almacenados ACID ($2.000 hasta 15 min + minuto adicional sin tope artificial)
+          const dbFolder = path.resolve(process.cwd(), '..', 'database');
+          const sql2Path = path.join(dbFolder, '02_procedures_acid.sql');
+          if (fs.existsSync(sql2Path)) {
+            await this.pool.query(fs.readFileSync(sql2Path, 'utf-8'));
+          }
+          // Actualizar pagos recientes que hubiesen tenido el tope antiguo de $42.000 y refrescar estancias activas de días anteriores
+          await this.pool.query(`
+            UPDATE estancias e
+            SET valor_bruto_cop = 2000 + ((e.minutos_permanencia - 15) * t.valor_minuto_cop),
+                valor_neto_pagar_cop = ROUND(((2000 + ((e.minutos_permanencia - 15) * t.valor_minuto_cop)) - e.descuento_convenio_cop) / 100.0) * 100
+            FROM vehiculos v, tarifas t
+            WHERE e.id_vehiculo = v.id_vehiculo
+              AND t.id_sede = e.id_sede
+              AND t.tipo_vehiculo = v.tipo_vehiculo
+              AND e.minutos_permanencia > 300
+              AND e.valor_neto_pagar_cop = 42000;
+
+            UPDATE pagos p
+            SET total_pagado_cop = e.valor_neto_pagar_cop,
+                subtotal_cop = ROUND(e.valor_neto_pagar_cop / 1.19, 2),
+                iva_cop = e.valor_neto_pagar_cop - ROUND(e.valor_neto_pagar_cop / 1.19, 2)
+            FROM estancias e
+            WHERE p.id_estancia = e.id_estancia
+              AND p.total_pagado_cop <> e.valor_neto_pagar_cop
+              AND e.estado = 'FINALIZADA';
+          `);
         }
 
         // 5. Verificar si las tablas de Data Lake (Raw/Trusted/Refined), Data Warehouse Estrella e IAM/CloudTrail existen
@@ -281,7 +309,12 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
                 modalidad_tarifa: r.modalidad_tarifa,
                 timestamp_entrada: r.timestamp_entrada,
                 minutos_transcurridos: mins,
-                valor_estimado_cop: Math.round((Math.max(mins, 10) * valMin) / 100) * 100,
+                valor_estimado_cop:
+                  r.modalidad_tarifa === 'ABONADO_MENSUAL' || r.modalidad_tarifa === 'MENSUALIDAD'
+                    ? 0
+                    : mins <= 15
+                    ? 2000
+                    : Math.round(((2000 + (mins - 15) * valMin) * (r.modalidad_tarifa === 'CONVENIO_CORPORATIVO' ? 0.75 : 1)) / 100) * 100,
               }
             : null,
         };
@@ -319,13 +352,19 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
         params
       );
 
-      return q.rows.map((r) => ({
-        ...r,
-        valor_estimado_cop:
-          r.modalidad_tarifa === 'ABONADO_MENSUAL'
-            ? 0
-            : Math.round((Math.max(r.minutos_transcurridos || 10, 10) * (r.valor_minuto_cop || 163)) / 100) * 100,
-      }));
+      return q.rows.map((r) => {
+        const mins = Math.max(1, Number(r.minutos_transcurridos || 1));
+        const valMin = Number(r.valor_minuto_cop || 163);
+        const bruto = mins <= 15 ? 2000 : 2000 + (mins - 15) * valMin;
+        const factor = r.modalidad_tarifa === 'CONVENIO_CORPORATIVO' ? 0.75 : 1;
+        return {
+          ...r,
+          valor_estimado_cop:
+            r.modalidad_tarifa === 'ABONADO_MENSUAL' || r.modalidad_tarifa === 'MENSUALIDAD'
+              ? 0
+              : Math.round((bruto * factor) / 100) * 100,
+        };
+      });
     }
 
     const list = this.fallbackEstancias.filter((e) => e.estado === 'ACTIVA' && (!idSede || e.id_sede === idSede));
