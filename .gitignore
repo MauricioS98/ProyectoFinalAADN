@@ -7,3 +7,4 @@ frontend/.angular/
 backend/storage_local/
 *.log
 .DS_Store
+
