@@ -62,6 +62,10 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
     const port = Number(process.env.DB_PORT || 5432);
     const user = process.env.DB_USER || 'postgres';
     const targetDb = process.env.DB_NAME || 'parkcloud_db';
+    // SSL requerido por Azure Database for PostgreSQL (DB_SSL=true). En local queda deshabilitado.
+    const sslConfig = String(process.env.DB_SSL).toLowerCase() === 'true'
+      ? { rejectUnauthorized: false }
+      : undefined;
 
     for (const pwd of uniquePasswords) {
       try {
@@ -73,6 +77,7 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
           password: pwd,
           database: 'postgres',
           connectionTimeoutMillis: 1500,
+          ssl: sslConfig,
         });
         await adminPool.query('SELECT 1');
 
@@ -92,6 +97,7 @@ export class PostgresParkingRepository implements IParkingRepositoryPort {
           password: pwd,
           database: targetDb,
           max: 15,
+          ssl: sslConfig,
         });
 
         // 4. Verificar si las tablas y el seed ya están cargados

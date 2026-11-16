@@ -8,3 +8,8 @@ backend/storage_local/
 *.log
 .DS_Store
 
+# Variables de entorno con credenciales (NO versionar)
+.env
+backend/.env
+frontend/.env
+
