@@ -6,8 +6,8 @@
 **Asignatura:** Arquitectura y Almacenamiento de Datos en la Nube (2026-3)  
 **Autores del Proyecto:**
 - **Mauricio Sánchez Aguilar** - `20212020045`
-- **Anderson Esteban Arévalo Rodríguez** - `20231020112`
-- **Miguel Ángel Pedroza Vanegas** - `20212020013`
+- **Anderson Esteban Arévalo Rodríguez** - `20222020063`
+- **Miguel Ángel Pedroza Vanegas** - `20222020062`
 
 ---
 
